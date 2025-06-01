@@ -1,39 +1,36 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
-
-import { useColorScheme } from '@/hooks/useColorScheme';
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+import { useEffect, useState } from "react";
+import { View, ActivityIndicator } from "react-native";
+import { Stack } from "expo-router";
+import { auth } from "../firebase/firebaseConfig";
+import { onAuthStateChanged, User } from "firebase/auth";
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
+  const [user, setUser] = useState<User | null>(null); // Fix type issue
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
+    console.log("🚀 Checking Firebase User on Mount:", auth.currentUser);
 
-  if (!loaded) {
-    return null;
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      console.log("🔥 Auth State Changed:", currentUser);
+      setUser(currentUser); // No more type error
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#0000ff" />
+      </View>
+    );
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <Stack screenOptions={{ headerShown: false }}>
+      {user ? <Stack.Screen name="(tabs)" /> : <Stack.Screen name="login/index" />}
+    </Stack>
   );
 }
