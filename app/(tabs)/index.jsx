@@ -1,15 +1,37 @@
-import { View, Text, Image, ActivityIndicator, FlatList, TouchableOpacity, StyleSheet, Modal, TextInput } from 'react-native';
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
-import { auth, db } from '../../firebase/firebaseConfig';
-import { onAuthStateChanged } from 'firebase/auth';
-import { collection, getDocs, getDoc, updateDoc, doc, arrayUnion, query, where } from 'firebase/firestore';
-import colors from '../../constant/colors';
+import {
+  View,
+  Text,
+  Image,
+  ActivityIndicator,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  Modal,
+  TextInput,
+} from "react-native";
+import React, { useEffect, useState } from "react";
+import { useRouter } from "expo-router";
+import { auth, db } from "../../firebase/firebaseConfig";
+import { onAuthStateChanged } from "firebase/auth";
+import {
+  collection,
+  getDocs,
+  getDoc,
+  updateDoc,
+  doc,
+  arrayUnion,
+  query,
+  where,
+  serverTimestamp,
+} from "firebase/firestore";
+import colors from "../../constant/colors";
+import { Dropdown } from 'react-native-element-dropdown';
+import { AntDesign } from '@expo/vector-icons';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [user, setUser ] = useState(null);
-  const [username, setUsername] = useState('');
+  const [user, setUser] = useState(null);
+  const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(true);
   const [activePolls, setActivePolls] = useState([]);
   const [inactivePolls, setInactivePolls] = useState([]);
@@ -17,126 +39,205 @@ export default function HomeScreen() {
   const [refresh, setRefresh] = useState(false);
   const [loadingStates, setLoadingStates] = useState({});
   const [modalVisible, setModalVisible] = useState(false);
-const [selectedPoll, setSelectedPoll] = useState(null);
-const [comments, setComments] = useState([]);
-const [newComment, setNewComment] = useState('');
-const [commentPage, setCommentPage] = useState(1);
-const COMMENTS_PER_PAGE = 5;
-const handleReaction = async (pollId, type) => {
-  const pollRef = doc(db, 'polls', pollId);
-  const pollSnap = await getDoc(pollRef);
-  const pollData = pollSnap.data();
+  const [selectedPoll, setSelectedPoll] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState("");
+  const [commentPage, setCommentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filter, setFilter] = useState("ongoing");
+  const [sort, setSort] = useState("newest");
+  
+  const COMMENTS_PER_PAGE = 5;
 
-  const currentArray = pollData[type === 'like' ? 'likes' : 'dislikes'] || [];
-  const oppositeArray = pollData[type === 'like' ? 'dislikes' : 'likes'] || [];
+  // Filter and sort options
+  const filterOptions = [
+    { label: "All Polls", value: "all" },
+    { label: "Ongoing", value: "ongoing" },
+    { label: "Ended", value: "ended" },
+    { label: "Participated", value: "participated" },
+    { label: "Not Participated", value: "notParticipated" },
+  ];
 
-  const hasReacted = currentArray.includes(user.uid);
-  const updatedCurrent = hasReacted ? currentArray.filter(uid => uid !== user.uid) : [...currentArray, user.uid];
-  const updatedOpposite = oppositeArray.filter(uid => uid !== user.uid);
+  const sortOptions = [
+    { label: "Newest", value: "newest" },
+    { label: "Oldest", value: "oldest" },
+    { label: "Most Votes", value: "mostVotes" },
+    { label: "Least Votes", value: "leastVotes" },
+  ];
 
-  await updateDoc(pollRef, {
-    [type === 'like' ? 'likes' : 'dislikes']: updatedCurrent,
-    [type === 'like' ? 'dislikes' : 'likes']: updatedOpposite,
-  });
+  const handleReaction = async (pollId, type) => {
+    const pollRef = doc(db, "polls", pollId);
+    const pollSnap = await getDoc(pollRef);
+    const pollData = pollSnap.data();
 
-  // Refresh poll state
-  setActivePolls(prev =>
-    prev.map(p =>
-      p.id === pollId ? { ...p, [type === 'like' ? 'likes' : 'dislikes']: updatedCurrent, [type === 'like' ? 'dislikes' : 'likes']: updatedOpposite } : p
+    const currentArray = pollData[type === "like" ? "likes" : "dislikes"] || [];
+    const oppositeArray =
+      pollData[type === "like" ? "dislikes" : "likes"] || [];
+
+    const hasReacted = currentArray.includes(user.uid);
+    const updatedCurrent = hasReacted
+      ? currentArray.filter((uid) => uid !== user.uid)
+      : [...currentArray, user.uid];
+    const updatedOpposite = oppositeArray.filter((uid) => uid !== user.uid);
+
+    await updateDoc(pollRef, {
+      [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
+      [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
+    });
+
+    // Refresh poll state
+    setActivePolls((prev) =>
+      prev.map((p) =>
+        p.id === pollId
+          ? {
+              ...p,
+              [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
+              [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
+            }
+          : p
+      )
+    );
+      setInactivePolls((prev) =>
+    prev.map((p) =>
+      p.id === pollId
+        ? {
+            ...p,
+            [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
+            [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
+          }
+        : p
     )
   );
-};
+  };
 
-const openPollModal = async (poll) => {
-  setSelectedPoll(poll);
-  setModalVisible(true);
-  setCommentPage(1);
-  const pollRef = doc(db, 'polls', poll.id);
-  const pollSnap = await getDoc(pollRef);
-  const pollData = pollSnap.data();
-  setComments(pollData.comments || []);
-};
+  const openPollModal = async (poll) => {
+    setSelectedPoll(poll);
+    setModalVisible(true);
+    setCommentPage(1);
+    const pollRef = doc(db, "polls", poll.id);
+    const pollSnap = await getDoc(pollRef);
+    const pollData = pollSnap.data();
+    setComments(pollData.comments || []);
+  };
 
-const submitComment = async () => {
-  if (!newComment.trim()) return;
-  const updated = [...comments, { userId: user.uid, username, text: newComment }];
-  await updateDoc(doc(db, 'polls', selectedPoll.id), { comments: updated });
-  setComments(updated);
-  setNewComment('');
-};
+  const submitComment = async () => {
+    if (!newComment.trim()) return;
 
-const editComment = (index) => {
-  const toEdit = comments[index];
-  setNewComment(toEdit.text);
-  deleteComment(index); // Will be re-added on submit
-};
+    // Fetch the profile of the *commenting user*, not poll creator
+    const userDoc = await getDoc(doc(db, "users", user.uid));
+    const profilePic = userDoc.exists() ? userDoc.data().profilePic : null;
 
-const deleteComment = async (index) => {
-  const updated = comments.filter((_, i) => i !== index);
-  await updateDoc(doc(db, 'polls', selectedPoll.id), { comments: updated });
-  setComments(updated);
-};
+    const newEntry = {
+      userId: user.uid,
+      username,
+      text: newComment.trim(),
+      timestamp: new Date().toISOString(),
+      profilePic, // Include it here
+    };
+
+    const updated = [...comments, newEntry];
+
+    await updateDoc(doc(db, "polls", selectedPoll.id), {
+      comments: updated,
+    });
+
+    setComments(updated);
+    setNewComment("");
+  };
+
+  const editComment = (index) => {
+    const toEdit = comments[index];
+    setNewComment(toEdit.text);
+    deleteComment(index);
+  };
+
+  const deleteComment = async (index) => {
+    const updated = comments.filter((_, i) => i !== index);
+    await updateDoc(doc(db, "polls", selectedPoll.id), { comments: updated });
+    setComments(updated);
+  };
+
+  const formatTime = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
-        console.log('No user detected, redirecting...');
-        router.replace('/login');
+        console.log("No user detected, redirecting...");
+        router.replace("/login");
         return;
       }
-  
+
       setUser(currentUser);
       setLoading(true);
-  
+
       try {
-        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
         if (userDoc.exists()) setUsername(userDoc.data().username);
-  
+
         const querySnapshot = await getDocs(
-          query(collection(db, 'polls'), where('createdBy', '!=', currentUser.uid))
+          query(
+            collection(db, "polls"),
+            where("createdBy", "!=", currentUser.uid)
+          )
         );
-  
-        const fetchedPolls = await Promise.all(querySnapshot.docs.map(async (document) => {
-          const pollData = document.data();
-          const userVote = pollData.votes?.find((vote) => vote.userId === currentUser.uid);
-          const createdAt = pollData.createdAt?.seconds * 1000; // Convert to milliseconds
-          const durationMs = pollData.duration?.unit === 'days'
-            ? parseInt(pollData.duration.value) * 24 * 60 * 60 * 1000
-            : pollData.duration?.unit === 'hours'
-              ? parseInt(pollData.duration.value) * 60 * 60 * 1000
-              : pollData.duration?.unit === 'minutes'
+
+        const fetchedPolls = await Promise.all(
+          querySnapshot.docs.map(async (document) => {
+            const pollData = document.data();
+            const userVote = pollData.votes?.find(
+              (vote) => vote.userId === currentUser.uid
+            );
+            const createdAt = pollData.createdAt?.seconds * 1000; // Convert to milliseconds
+            const durationMs =
+              pollData.duration?.unit === "days"
+                ? parseInt(pollData.duration.value) * 24 * 60 * 60 * 1000
+                : pollData.duration?.unit === "hours"
+                ? parseInt(pollData.duration.value) * 60 * 60 * 1000
+                : pollData.duration?.unit === "minutes"
                 ? parseInt(pollData.duration.value) * 60 * 1000 // Handle minutes
                 : 0;
-  
-          const expiresAt = createdAt + durationMs;
-          const remainingTime = expiresAt - Date.now();
-          const isExpired = remainingTime <= 0;
-  
-          // Fetch creator's profile picture
-          const creatorDoc = await getDoc(doc(db, 'users', pollData.createdBy));
-          const creatorProfilePic = creatorDoc.exists() ? creatorDoc.data().profilePic : null;
-  
-          return {
-            id: document.id,
-            ...pollData,
-            remainingTime,
-            isExpired,
-            userVotedOption: userVote ? userVote.option : null,
-            creatorProfilePic, // Add the profile picture to the poll data
-          };
-        }));
-  
+
+            const expiresAt = createdAt + durationMs;
+            const remainingTime = expiresAt - Date.now();
+            const isExpired = remainingTime <= 0;
+
+            // Fetch creator's profile picture
+            const creatorDoc = await getDoc(
+              doc(db, "users", pollData.createdBy)
+            );
+            const creatorProfilePic = creatorDoc.exists()
+              ? creatorDoc.data().profilePic
+              : null;
+
+            return {
+              id: document.id,
+              ...pollData,
+              remainingTime,
+              isExpired,
+              userVotedOption: userVote ? userVote.option : null,
+              creatorProfilePic, // Add the profile picture to the poll data
+              createdAt: pollData.createdAt?.toDate() || new Date(createdAt),
+            };
+          })
+        );
+
         // Update Firestore for expired polls in batch (optional)
         const updates = fetchedPolls
-          .filter((poll) => poll.isExpired && poll.status !== 'inactive')
-          .map(async (poll) => await updateDoc(doc(db, 'polls', poll.id), { status: 'inactive' }));
-  
+          .filter((poll) => poll.isExpired && poll.status !== "inactive")
+          .map(
+            async (poll) =>
+              await updateDoc(doc(db, "polls", poll.id), { status: "inactive" })
+          );
+
         await Promise.all(updates); // Batch update
-  
+
         // Separate active and inactive polls
         setActivePolls(fetchedPolls.filter((poll) => !poll.isExpired));
         setInactivePolls(fetchedPolls.filter((poll) => poll.isExpired));
-  
+
         // Populate selectedOptions with the user's previous votes
         const userVotes = {};
         fetchedPolls.forEach((poll) => {
@@ -146,12 +247,12 @@ const deleteComment = async (index) => {
         });
         setSelectedOptions(userVotes); // Set the selectedOptions state
       } catch (error) {
-        console.error('Error fetching polls:', error);
+        console.error("Error fetching polls:", error);
       }
-  
+
       setLoading(false);
     });
-  
+
     return () => unsubscribe();
   }, []);
 
@@ -172,62 +273,62 @@ const deleteComment = async (index) => {
   // Submit vote
   const votePoll = async (pollId) => {
     if (!user) return;
-  
+
     // Set loading state for this poll
     setLoadingStates((prev) => ({ ...prev, [pollId]: true }));
-  
+
     const selectedOption = selectedOptions[pollId];
     if (!selectedOption) {
-      alert('Please select an option before submitting.');
+      alert("Please select an option before submitting.");
       setLoadingStates((prev) => ({ ...prev, [pollId]: false })); // Reset loading state
       return;
     }
-  
+
     try {
-      const pollRef = doc(db, 'polls', pollId);
+      const pollRef = doc(db, "polls", pollId);
       const pollSnap = await getDoc(pollRef);
-  
+
       if (!pollSnap.exists()) {
-        alert('Poll does not exist.');
+        alert("Poll does not exist.");
         setLoadingStates((prev) => ({ ...prev, [pollId]: false })); // Reset loading state
         return;
       }
-  
+
       const pollData = pollSnap.data();
-  
+
       // Check if user already voted
-      if (pollData.votes?.some(vote => vote.userId === user.uid)) {
-        alert('You have already voted in this poll.');
+      if (pollData.votes?.some((vote) => vote.userId === user.uid)) {
+        alert("You have already voted in this poll.");
         setLoadingStates((prev) => ({ ...prev, [pollId]: false })); // Reset loading state
         return;
       }
-  
+
       // Update options array by incrementing votes
-      const updatedOptions = pollData.options.map(option =>
+      const updatedOptions = pollData.options.map((option) =>
         option.text === selectedOption
           ? { ...option, votes: option.votes + 1 }
           : option
       );
-  
+
       // Update Firestore
       await updateDoc(pollRef, {
         votes: arrayUnion({ userId: user.uid, option: selectedOption }),
         options: updatedOptions,
         totalVotes: (pollData.totalVotes || 0) + 1, // Increase total vote count
       });
-  
+
       // Re-fetch updated poll data
       const updatedPollSnap = await getDoc(pollRef);
       const updatedPollData = updatedPollSnap.data();
-  
+
       // Update state to reflect vote submission
-      setActivePolls(prevPolls =>
-        prevPolls.map(poll => {
+      setActivePolls((prevPolls) =>
+        prevPolls.map((poll) => {
           if (poll.id === pollId) {
             // Preserve the remainingTime and creatorProfilePic from the previous state
             const remainingTime = poll.remainingTime;
             const creatorProfilePic = poll.creatorProfilePic;
-  
+
             return {
               ...updatedPollData,
               id: pollId,
@@ -239,10 +340,9 @@ const deleteComment = async (index) => {
           return poll;
         })
       );
-  
     } catch (error) {
-      console.error('Error voting:', error);
-      alert('Failed to submit vote.');
+      console.error("Error voting:", error);
+      alert("Failed to submit vote.");
     } finally {
       // Reset loading state
       setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
@@ -251,107 +351,255 @@ const deleteComment = async (index) => {
 
   const clearVote = async (pollId) => {
     if (!user) return;
-  
+
     // Set loading state for this poll
     setLoadingStates((prev) => ({ ...prev, [pollId]: true }));
-  
+
     try {
-      const pollRef = doc(db, 'polls', pollId);
+      const pollRef = doc(db, "polls", pollId);
       const pollSnap = await getDoc(pollRef);
-  
+
       if (!pollSnap.exists()) {
-        alert('Poll does not exist.');
+        alert("Poll does not exist.");
         setLoadingStates((prev) => ({ ...prev, [pollId]: false })); // Reset loading state
         return;
       }
-  
+
       const pollData = pollSnap.data();
-  
+
       // Find the user's vote
-      const userVoteIndex = pollData.votes?.findIndex(vote => vote.userId === user.uid);
-  
+      const userVoteIndex = pollData.votes?.findIndex(
+        (vote) => vote.userId === user.uid
+      );
+
       if (userVoteIndex === -1) {
-        alert('You have not voted in this poll.');
+        alert("You have not voted in this poll.");
         setLoadingStates((prev) => ({ ...prev, [pollId]: false })); // Reset loading state
         return;
       }
-  
+
       // Remove user vote
-      const updatedVotes = pollData.votes.filter(vote => vote.userId !== user.uid);
-  
+      const updatedVotes = pollData.votes.filter(
+        (vote) => vote.userId !== user.uid
+      );
+
       // Decrease vote count for the selected option
       const selectedOption = pollData.votes[userVoteIndex].option;
-      const updatedOptions = pollData.options.map(option =>
+      const updatedOptions = pollData.options.map((option) =>
         option.text === selectedOption
-          ? { ...option, votes: Math.max(0, option.votes - 1) } // Ensure votes don’t go negative
+          ? { ...option, votes: Math.max(0, option.votes - 1) } // Ensure votes don't go negative
           : option
       );
-  
+
       // Calculate new total votes count
       const newTotalVotes = Math.max(0, (pollData.totalVotes || 0) - 1);
-  
+
       // Update Firestore
       await updateDoc(pollRef, {
         votes: updatedVotes,
         options: updatedOptions,
         totalVotes: newTotalVotes,
       });
-  
+
       // Update state to force re-render
       setActivePolls((prevPolls) => {
         const newPolls = prevPolls.map((poll) =>
           poll.id === pollId
-            ? { ...poll, votes: updatedVotes, options: updatedOptions, totalVotes: newTotalVotes, userVotedOption: null }
+            ? {
+                ...poll,
+                votes: updatedVotes,
+                options: updatedOptions,
+                totalVotes: newTotalVotes,
+                userVotedOption: null,
+              }
             : poll
         );
         return [...newPolls]; // Return a new array reference to trigger re-render
       });
-  
     } catch (error) {
-      console.error('Error clearing vote:', error);
-      alert('Failed to remove vote.');
+      console.error("Error clearing vote:", error);
+      alert("Failed to remove vote.");
     } finally {
       // Reset loading state
       setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
     }
   };
 
+  // Filter and sort the polls
+  const getFilteredAndSortedPolls = () => {
+    let combinedPolls = [...activePolls, ...inactivePolls];
+    
+    // Apply search filter
+    if (searchQuery) {
+      combinedPolls = combinedPolls.filter(poll => 
+        poll.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        poll.description.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Apply status filter
+    switch (filter) {
+      case "ongoing":
+        combinedPolls = combinedPolls.filter(poll => !poll.isExpired);
+        break;
+      case "ended":
+        combinedPolls = combinedPolls.filter(poll => poll.isExpired);
+        break;
+      case "participated":
+        combinedPolls = combinedPolls.filter(poll => poll.userVotedOption !== null);
+        break;
+      case "notParticipated":
+        combinedPolls = combinedPolls.filter(poll => poll.userVotedOption === null);
+        break;
+      default:
+        // "all" - no filter
+        break;
+    }
+    
+    // Apply sorting
+    switch (sort) {
+      case "newest":
+        combinedPolls.sort((a, b) => b.createdAt - a.createdAt);
+        break;
+      case "oldest":
+        combinedPolls.sort((a, b) => a.createdAt - b.createdAt);
+        break;
+      case "mostVotes":
+        combinedPolls.sort((a, b) => (b.totalVotes || 0) - (a.totalVotes || 0));
+        break;
+      case "leastVotes":
+        combinedPolls.sort((a, b) => (a.totalVotes || 0) - (b.totalVotes || 0));
+        break;
+      default:
+        break;
+    }
+    
+    return combinedPolls;
+  };
+
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
         <ActivityIndicator size="large" color={colors.DARK} />
       </View>
     );
   }
 
-  // Combine active and inactive polls
-  const combinedPolls = [...activePolls, ...inactivePolls];
+  const filteredPolls = getFilteredAndSortedPolls();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.DARK }}>
       <View style={{ backgroundColor: colors.LIGHT }}>
-        <View style={{ backgroundColor: colors.DARK, paddingVertical: 20, padding: 20, borderBottomRightRadius: 25 }}>
+        <View
+          style={{
+            backgroundColor: colors.DARK,
+            paddingVertical: 20,
+            padding: 20,
+            paddingBottom: 0,
+            borderBottomRightRadius: 25,
+          }}
+        >
           <Image
-            style={{ width: 45, height: 45, borderRadius: 5, alignSelf: 'flex-end' }}
-            source={require('./../../assets/images/logo3.jpg')}
+            style={{
+              width: 45,
+              height: 45,
+              borderRadius: 5,
+              alignSelf: "flex-end",
+            }}
+            source={require("./../../assets/images/logo3.jpg")}
           />
-          <Text style={{ fontSize: 25, color: colors.LIGHT, fontWeight: 'bold', marginTop: 10 }}>
-            Welcome, {username}!
-          </Text>
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search polls..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor={colors.GRAY}
+          />
+        </View>
         </View>
       </View>
-      <View style={{ backgroundColor: colors.LIGHT, padding: 20, paddingBottom: 0, borderTopLeftRadius: 25, flex: 1 }}>
-        <Text style={{ fontSize: 18, fontWeight: 'bold', marginVertical: 15 }}>Available Polls</Text>
+      <View
+        style={{
+          backgroundColor: colors.LIGHT,
+          padding: 20,
+          paddingBottom: 0,
+          borderTopLeftRadius: 25,
+          flex: 1,
+        }}
+      >
+
+
+        {/* Filter and Sort Row */}
+        <View style={styles.filterSortRow}>
+          {/* Filter Dropdown */}
+          <View style={styles.dropdownContainer}>
+            <Dropdown
+              style={styles.dropdown}
+              placeholderStyle={styles.dropdownPlaceholder}
+              selectedTextStyle={styles.dropdownSelectedText}
+              inputSearchStyle={styles.dropdownInputSearch}
+              iconStyle={styles.dropdownIconStyle}
+              data={filterOptions}
+              search={false}
+              maxHeight={300}
+              labelField="label"
+              valueField="value"
+              placeholder="Select filter"
+              value={filter}
+              onChange={item => setFilter(item.value)}
+              renderLeftIcon={() => (
+                <AntDesign
+                  style={styles.dropdownIcon}
+                  color={colors.DARK}
+                  name="filter"
+                  size={18}
+                />
+              )}
+            />
+          </View>
+
+          {/* Sort Dropdown */}
+          <View style={styles.dropdownContainer}>
+            <Dropdown
+              style={styles.dropdown}
+              placeholderStyle={styles.dropdownPlaceholder}
+              selectedTextStyle={styles.dropdownSelectedText}
+              inputSearchStyle={styles.dropdownInputSearch}
+              iconStyle={styles.dropdownIconStyle}
+              data={sortOptions}
+              search={false}
+              maxHeight={300}
+              labelField="label"
+              valueField="value"
+              placeholder="Select sort"
+              value={sort}
+              onChange={item => setSort(item.value)}
+              renderLeftIcon={() => (
+                <AntDesign
+                  style={styles.dropdownIcon}
+                  color={colors.DARK}
+                  name="arrowup"
+                  size={18}
+                />
+              )}
+            />
+          </View>
+        </View>
 
         {/* Combined Polls Section */}
-        {combinedPolls.length > 0 ? (
+        {filteredPolls.length > 0 ? (
           <FlatList
-            data={combinedPolls}
+            data={filteredPolls}
             keyExtractor={(item) => item.id}
             extraData={refresh} // Force FlatList to re-render
-            renderItem={({ item }) => (
+            renderItem={({ item }) =>
               item.isExpired ? (
-                <PollResultItem item={item} />
+                <PollResultItem 
+                  item={item} 
+                  handleReaction={handleReaction} 
+                  openPollModal={openPollModal} 
+                />
               ) : (
                 <PollItem
                   item={item}
@@ -360,149 +608,359 @@ const deleteComment = async (index) => {
                   onSelectOption={selectOption}
                   onVote={votePoll}
                   onClearVote={clearVote}
-                  loadingStates={loadingStates} // Make sure this is passed properly
-                  handleReaction={handleReaction}  // <-- Pass the function here
-                  openPollModal={openPollModal} 
+                  loadingStates={loadingStates}
+                  handleReaction={handleReaction}
+                  openPollModal={openPollModal}
                 />
               )
-            )}
+            }
           />
         ) : (
-          <Text style={{ textAlign: 'center', fontSize: 16, color: colors.GRAY, marginTop: 10 }}>
-            No polls available to vote.
+          <Text
+            style={{
+              textAlign: "center",
+              fontSize: 16,
+              color: colors.GRAY,
+              marginTop: 10,
+            }}
+          >
+            No polls match your criteria.
           </Text>
         )}
       </View>
       {selectedPoll && (
-  <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
-    <View style={{ flex: 1, padding: 20 }}>
-      <Text style={{ fontSize: 20, fontWeight: 'bold' }}>{selectedPoll.title}</Text>
-      <Text>{selectedPoll.description}</Text>
+        <Modal
+          visible={modalVisible}
+          animationType="slide"
+          onRequestClose={() => setModalVisible(false)}
+        >
+          <View style={{ flex: 1, padding: 20, backgroundColor: "#fff" }}>
+            <View style={{ marginBottom: 20 }}>
+              {/* Title */}
+              <Text
+                style={{
+                  fontSize: 22,
+                  fontWeight: "700",
+                  color: colors.DARK,
+                  marginBottom: 8,
+                }}
+              >
+                {selectedPoll.title}
+              </Text>
 
-      <FlatList
-        data={comments.slice(0, commentPage * COMMENTS_PER_PAGE)}
-        keyExtractor={(item, index) => index.toString()}
-        renderItem={({ item, index }) => (
-          <View style={{ marginVertical: 5 }}>
-            <Text style={{ fontWeight: 'bold' }}>{item.username}</Text>
-            <Text>{item.text}</Text>
-            {item.userId === user.uid && (
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TouchableOpacity onPress={() => editComment(index)}> 
-                  <Text style={{ color: 'orange' }}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => deleteComment(index)}>
-                  <Text style={{ color: 'red' }}>Delete</Text>
-                </TouchableOpacity>
+              {/* Creator Info */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <Image
+                  source={
+                    selectedPoll.creatorProfilePic
+                      ? { uri: selectedPoll.creatorProfilePic }
+                      : require("./../../assets/images/default.png")
+                  }
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    borderWidth: 1,
+                    borderColor: "#ccc",
+                  }}
+                />
+                <Text style={{ fontSize: 14, color: colors.GRAY }}>
+                  Created by:{" "}
+                  <Text style={{ fontWeight: "600", color: colors.DARK }}>
+                    {selectedPoll.creatorName || "Unknown"}
+                  </Text>
+                </Text>
               </View>
-            )}
-          </View>
-        )}
-        ListFooterComponent={() =>
-          comments.length > commentPage * COMMENTS_PER_PAGE && (
-            <TouchableOpacity onPress={() => setCommentPage(prev => prev + 1)}>
-              <Text style={{ color: colors.BLUE, marginTop: 10 }}>View more...</Text>
+              <View
+                style={{
+                  borderBottomWidth: 1,
+                  borderColor: "#eee",
+                  marginTop: 15,
+                }}
+              />
+
+              {/* Description */}
+              <Text
+                style={{ fontSize: 15, color: colors.GRAY, lineHeight: 20 }}
+              >
+                {selectedPoll.description}
+              </Text>
+            </View>
+            <FlatList
+              data={comments.slice(0, commentPage * COMMENTS_PER_PAGE)}
+              keyExtractor={(item, index) => index.toString()}
+              renderItem={({ item, index }) => (
+                <View
+                  style={{
+                    backgroundColor: "#f2f2f2",
+                    borderRadius: 10,
+                    padding: 12,
+                    marginBottom: 10,
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                    gap: 10,
+                  }}
+                >
+                  {/* Profile Picture */}
+                  <Image
+                    source={
+                      item.profilePic
+                        ? { uri: item.profilePic }
+                        : require("./../../assets/images/default.png")
+                    }
+                    style={{ width: 40, height: 40, borderRadius: 20 }}
+                  />
+
+                  {/* Comment Body */}
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontWeight: "bold",
+                        fontSize: 14,
+                        color: colors.DARK,
+                      }}
+                    >
+                      {item.username}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.GRAY }}>
+                      {formatTime(item.timestamp)}
+                    </Text>
+                    <Text style={{ fontSize: 14, marginTop: 5 }}>
+                      {item.text}
+                    </Text>
+
+                    {item.userId === user.uid && (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "flex-end",
+                          marginTop: 10,
+                          gap: 12,
+                        }}
+                      >
+                        <TouchableOpacity onPress={() => editComment(index)}>
+                          <Text
+                            style={{ color: colors.BLUE, fontWeight: "600" }}
+                          >
+                            Edit
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => deleteComment(index)}>
+                          <Text style={{ color: "red", fontWeight: "600" }}>
+                            Delete
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+            />
+
+            {/* Input Section */}
+            <View
+              style={{
+                marginTop: 10,
+                borderTopWidth: 1,
+                borderColor: "#ddd",
+                paddingTop: 15,
+              }}
+            >
+              <TextInput
+                placeholder="Write a comment..."
+                value={newComment}
+                onChangeText={setNewComment}
+                multiline
+                style={{
+                  borderColor: colors.GRAY,
+                  borderWidth: 1,
+                  borderRadius: 10,
+                  padding: 10,
+                  fontSize: 14,
+                  backgroundColor: "#fff",
+                  minHeight: 50,
+                  textAlignVertical: "top",
+                }}
+              />
+              <TouchableOpacity
+                onPress={submitComment}
+                style={{
+                  backgroundColor: colors.DARK,
+                  padding: 12,
+                  borderRadius: 10,
+                  marginTop: 10,
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontWeight: "bold",
+                    textAlign: "center",
+                  }}
+                >
+                  {newComment.trim() ? "Post Comment" : "Type something..."}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Close Button */}
+            <TouchableOpacity
+              onPress={() => setModalVisible(false)}
+              style={{ marginTop: 20 }}
+            >
+              <Text
+                style={{
+                  textAlign: "center",
+                  color: "red",
+                  fontWeight: "bold",
+                  fontSize: 16,
+                }}
+              >
+                Close
+              </Text>
             </TouchableOpacity>
-          )
-        }
-      />
-
-      <TextInput
-        placeholder="Add a comment..."
-        value={newComment}
-        onChangeText={setNewComment}
-        style={{ borderColor: colors.GRAY, borderWidth: 1, marginTop: 10, padding: 8, borderRadius: 5 }}
-      />
-      <TouchableOpacity onPress={submitComment} style={{ backgroundColor: colors.DARK, padding: 10, marginTop: 10 }}>
-        <Text style={{ color: '#fff', textAlign: 'center' }}>Post Comment</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={() => setModalVisible(false)} style={{ marginTop: 20 }}>
-        <Text style={{ textAlign: 'center', color: 'red' }}>Close</Text>
-      </TouchableOpacity>
+          </View>
+        </Modal>
+      )}
     </View>
-  </Modal>
-)}
-
-    </View>
-    
   );
 }
 
 // PollItem component for active polls
-const PollItem = ({ item, userHasVoted, selectedOption, onSelectOption, onVote, onClearVote, loadingStates,handleReaction, openPollModal  }) => {
+const PollItem = ({
+  item,
+  userHasVoted,
+  selectedOption,
+  onSelectOption,
+  onVote,
+  onClearVote,
+  loadingStates,
+  handleReaction,
+  openPollModal,
+}) => {
   const isLoading = loadingStates[item.id] || false;
 
   return (
     <View
       style={{
-        backgroundColor: 'white',
+        backgroundColor: "white",
         padding: 20,
         paddingBottom: 30,
         marginBottom: 25,
         borderRadius: 10,
-        shadowColor: '#000',
+        shadowColor: "#000",
         shadowOpacity: 0.1,
         shadowRadius: 5,
         borderWidth: 4,
-        borderColor: 'white',
+        borderColor: "white",
         elevation: 2,
-        shadowColor: 'gray'
+        shadowColor: "gray",
       }}
     >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <Image
-        source={item.creatorProfilePic ? { uri: item.creatorProfilePic } : require('./../../assets/images/default.png')}
-        style={{ width: 35, height: 35, borderRadius: 20, marginRight: 10 }}
-      />
-      <Text style={{ fontSize: 14, fontWeight: 'bold', color: colors.GRAY }}>{item.creatorName}</Text>
-    </View>
-    <View style={{
-      backgroundColor: colors.BLUE, // Use your defined color
-      borderRadius: 20,
-      paddingVertical: 5,
-      paddingHorizontal: 10,
-      minWidth: 80,
-      alignItems: 'center'
-    }}>
-      <Text style={{ color: 'white', fontSize: 14 }}>{item.totalVotes || 0} Votes</Text>
-    </View>
-  </View>
-      <Text style={{ fontSize: 16, fontWeight: 'bold', marginVertical: 5 }}>{item.title}</Text>
-      <Text style={{ fontSize: 14}}>{item.description}</Text>
-      <Text style={{ fontSize: 14, color: item.isExpired ? 'red' : colors.BLUE, marginVertical: 10}}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 10,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Image
+            source={
+              item.creatorProfilePic
+                ? { uri: item.creatorProfilePic }
+                : require("./../../assets/images/default.png")
+            }
+            style={{ width: 35, height: 35, borderRadius: 20, marginRight: 10 }}
+          />
+          <Text
+            style={{ fontSize: 14, fontWeight: "bold", color: colors.GRAY }}
+          >
+            {item.creatorName}
+          </Text>
+        </View>
+        <View
+          style={{
+            backgroundColor: colors.BLUE,
+            borderRadius: 20,
+            paddingVertical: 5,
+            paddingHorizontal: 10,
+            minWidth: 80,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "white", fontSize: 14 }}>
+            {item.totalVotes || 0} Votes
+          </Text>
+        </View>
+      </View>
+      <Text style={{ fontSize: 16, fontWeight: "bold", marginVertical: 5 }}>
+        {item.title}
+      </Text>
+      <Text style={{ fontSize: 14 }}>{item.description}</Text>
+      <Text
+        style={{
+          fontSize: 14,
+          color: item.isExpired ? "red" : colors.BLUE,
+          marginVertical: 10,
+        }}
+      >
         {item.isExpired
-          ? 'Poll has ended'
+          ? "Poll has ended"
           : (() => {
-              const days = Math.floor(item.remainingTime / (1000 * 60 * 60 * 24));
-              const hours = Math.floor((item.remainingTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-              const minutes = Math.floor((item.remainingTime % (1000 * 60 * 60)) / (1000 * 60));
+              const days = Math.floor(
+                item.remainingTime / (1000 * 60 * 60 * 24)
+              );
+              const hours = Math.floor(
+                (item.remainingTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
+              );
+              const minutes = Math.floor(
+                (item.remainingTime % (1000 * 60 * 60)) / (1000 * 60)
+              );
 
-              return `Ends in: ${days > 0 ? `${days}d ` : ''}${hours > 0 ? `${hours}h ` : ''}${minutes}m`;
+              return `Ends in: ${days > 0 ? `${days}d ` : ""}${
+                hours > 0 ? `${hours}h ` : ""
+              }${minutes}m`;
             })()}
       </Text>
 
       {item.options?.map((option, index) => (
         <TouchableOpacity
           key={index}
-          onPress={() => !userHasVoted && !item.isExpired && onSelectOption(item.id, option.text)}
+          onPress={() =>
+            !userHasVoted &&
+            !item.isExpired &&
+            onSelectOption(item.id, option.text)
+          }
           disabled={userHasVoted || item.isExpired}
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: selectedOption === option.text ? colors.LIGHTBLUE : 'white',
+            minHeight: 50,
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor:
+              selectedOption === option.text ? colors.LIGHTBLUE : "white",
             padding: 10,
             marginTop: 8,
             borderRadius: 15,
-            shadowColor: '#000',
+            shadowColor: "#000",
             shadowOpacity: 0.1,
             shadowRadius: 5,
             borderWidth: 4,
-            borderColor: 'white',
+            borderColor: "white",
             elevation: 2,
-            shadowColor: 'gray',
-            opacity: (userHasVoted && selectedOption !== option.text) || item.isExpired ? 0.5 : 1,
+            shadowColor: "gray",
+            opacity:
+              (userHasVoted && selectedOption !== option.text) || item.isExpired
+                ? 0.5
+                : 1,
           }}
         >
           {/* Circle Indicator */}
@@ -513,11 +971,18 @@ const PollItem = ({ item, userHasVoted, selectedOption, onSelectOption, onVote, 
               borderRadius: 10,
               borderWidth: 2,
               borderColor: colors.DARK,
-              backgroundColor: selectedOption === option.text ? colors.DARK : 'transparent',
+              backgroundColor:
+                selectedOption === option.text ? colors.DARK : "transparent",
               marginRight: 10,
             }}
           />
-          <Text style={{ color: selectedOption === option.text ? colors.DARK : colors.DARK }}>
+          <Text
+            style={{
+              color: selectedOption === option.text ? colors.DARK : colors.DARK,
+        flex: 1, // Allow text to take available space
+        flexWrap: 'wrap', // Allow text to wrap
+            }}
+          >
             {option.text}
           </Text>
         </TouchableOpacity>
@@ -527,18 +992,22 @@ const PollItem = ({ item, userHasVoted, selectedOption, onSelectOption, onVote, 
       {!userHasVoted && (
         <TouchableOpacity
           onPress={() => onVote(item.id)}
-          disabled={!selectedOption || item.isExpired || isLoading} // Disable during loading
+          disabled={!selectedOption || item.isExpired || isLoading}
           style={{
-            backgroundColor: item.isExpired ? 'gray' : colors.BLUE,
+            backgroundColor: item.isExpired ? "gray" : colors.BLUE,
             padding: 10,
             marginTop: 25,
             borderRadius: 25,
-            alignItems: 'center',
-            opacity: item.isExpired || !selectedOption || isLoading ? 0.5 : 1, // Adjust opacity
+            alignItems: "center",
+            opacity: item.isExpired || !selectedOption || isLoading ? 0.5 : 1,
           }}
         >
-          <Text style={{ color: colors.LIGHT, fontWeight: 'bold' }}>
-            {isLoading ? 'Submitting...' : item.isExpired ? 'Poll Ended' : 'Submit Vote'}
+          <Text style={{ color: colors.LIGHT, fontWeight: "bold" }}>
+            {isLoading
+              ? "Submitting..."
+              : item.isExpired
+              ? "Poll Ended"
+              : "Submit Vote"}
           </Text>
         </TouchableOpacity>
       )}
@@ -547,145 +1016,250 @@ const PollItem = ({ item, userHasVoted, selectedOption, onSelectOption, onVote, 
       {userHasVoted && (
         <TouchableOpacity
           onPress={() => onClearVote(item.id)}
-          disabled={isLoading} // Disable during loading
+          disabled={isLoading}
           style={{
-            backgroundColor: 'gray',
+            backgroundColor: "gray",
             padding: 10,
             marginTop: 25,
             borderRadius: 25,
-            alignItems: 'center',
-            opacity: isLoading ? 0.5 : 1, // Adjust opacity
+            alignItems: "center",
+            opacity: isLoading ? 0.5 : 1,
           }}
         >
-          <Text style={{ color: colors.LIGHT, fontWeight: 'bold' }}>
-            {isLoading ? 'Clearing...' : 'Clear Vote'}
+          <Text style={{ color: colors.LIGHT, fontWeight: "bold" }}>
+            {isLoading ? "Clearing..." : "Clear Vote"}
           </Text>
         </TouchableOpacity>
       )}
       <View style={styles.reactionsContainer}>
-        <TouchableOpacity onPress={() => handleReaction(item.id, 'like')}>
+        <TouchableOpacity onPress={() => handleReaction(item.id, "like")}>
           <Text style={styles.reactionText}>👍 {item.likes?.length || 0}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => handleReaction(item.id, 'dislike')}>
-          <Text style={styles.reactionText}>👎 {item.dislikes?.length || 0}</Text>
+        <TouchableOpacity onPress={() => handleReaction(item.id, "dislike")}>
+          <Text style={styles.reactionText}>
+            👎 {item.dislikes?.length || 0}
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => openPollModal(item)}>
           <Text style={styles.commentText}>💬 Comments</Text>
         </TouchableOpacity>
+      </View>
     </View>
-
-    </View>
-    
   );
 };
-// PollResultItem component for inactive polls
-const PollResultItem = ({ item }) => {
-  const totalVotes = item.totalVotes || 0;
-  const maxVotes = Math.max(...item.options.map(option => option.votes || 0));
 
+// PollResultItem component for inactive polls
+const PollResultItem = ({ item, handleReaction, openPollModal }) => {
+  const totalVotes = item.totalVotes || 0;
+  const maxVotes = Math.max(...item.options.map((option) => option.votes || 0));
 
   return (
     <View
-  style={{
-    backgroundColor: 'white',
-    padding: 20,
-    paddingBottom: 30,
-    marginBottom: 25,
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    borderWidth: 4,
-    borderColor: 'white',
-    elevation: 2,
-    shadowColor: 'gray'
-  }}
->
-  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <Image
-        source={item.creatorProfilePic ? { uri: item.creatorProfilePic } : require('./../../assets/images/default.png')}
-        style={{ width: 35, height: 35, borderRadius: 20, marginRight: 10 }}
-      />
-      <Text style={{ fontSize: 14, fontWeight: 'bold', color: colors.GRAY }}>{item.creatorName}</Text>
-    </View>
-    <View style={{
-      backgroundColor: colors.BLUE, // Use your defined color
-      borderRadius: 20,
-      paddingVertical: 5,
-      paddingHorizontal: 10,
-      minWidth: 80,
-      alignItems: 'center'
-    }}>
-      <Text style={{ color: 'white', fontSize: 14 }}>{totalVotes} Votes</Text>
-    </View>
-  </View>
-  <Text style={{ fontSize: 16, fontWeight: 'bold', marginTop: 5 }}>{item.title}</Text>
-  <Text style={{ fontSize: 16, marginVertical: 5 }}>{item.description}</Text>
-  <Text style={{ fontSize: 14, color: 'red', marginBottom: 5 }}>Poll has ended</Text>
+      style={{
+        backgroundColor: "white",
+        padding: 20,
+        paddingBottom: 30,
+        marginBottom: 25,
+        borderRadius: 10,
+        shadowColor: "#000",
+        shadowOpacity: 0.1,
+        shadowRadius: 5,
+        borderWidth: 4,
+        borderColor: "white",
+        elevation: 2,
+        shadowColor: "gray",
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 5,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Image
+            source={
+              item.creatorProfilePic
+                ? { uri: item.creatorProfilePic }
+                : require("./../../assets/images/default.png")
+            }
+            style={{ width: 35, height: 35, borderRadius: 20, marginRight: 10 }}
+          />
+          <Text
+            style={{ fontSize: 14, fontWeight: "bold", color: colors.GRAY }}
+          >
+            {item.creatorName}
+          </Text>
+        </View>
+        <View
+          style={{
+            backgroundColor: colors.BLUE,
+            borderRadius: 20,
+            paddingVertical: 5,
+            paddingHorizontal: 10,
+            minWidth: 80,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "white", fontSize: 14 }}>
+            {totalVotes} Votes
+          </Text>
+        </View>
+      </View>
+      <Text style={{ fontSize: 16, fontWeight: "bold", marginTop: 5 }}>
+        {item.title}
+      </Text>
+      <Text style={{ fontSize: 16, marginVertical: 5 }}>
+        {item.description}
+      </Text>
+      <Text style={{ fontSize: 14, color: "red", marginBottom: 5 }}>
+        Poll has ended
+      </Text>
 
-  {item.options?.map((option, index) => {
-    const optionVotes = option.votes || 0;
-    const percentage = totalVotes > 0 ? ((optionVotes / totalVotes) * 100).toFixed(2) : 0;
+      {item.options?.map((option, index) => {
+        const optionVotes = option.votes || 0;
+        const percentage =
+          totalVotes > 0 ? ((optionVotes / totalVotes) * 100).toFixed(2) : 0;
 
-    return (
-      <View key={index} style={{ marginTop: 10 }}>
-        <View style={styles.progressBarContainer}>
-          <View style={styles.progressBarWrapper}>
+        return (
+          <View key={index} style={{ marginTop: 10 }}>
             <View style={styles.progressBarContainer}>
-              <View style={[styles.progressBar, { width: `${percentage}%`, backgroundColor: colors.LIGHTBLUE }]} />
-              <View style={styles.progressTextContainer}>
-                <Text style={styles.progressOption}>{option.text}</Text>
-                <Text style={styles.progressPercentage}>{percentage}%</Text>
+              <View style={styles.progressBarWrapper}>
+                <View style={styles.progressBarContainer}>
+                  <View
+                    style={[
+                      styles.progressBar,
+                      {
+                        width: `${percentage}%`,
+                        backgroundColor: colors.LIGHTBLUE,
+                      },
+                    ]}
+                  />
+                  <View style={styles.progressTextContainer}>
+                    <Text 
+                style={[styles.progressOption, { flex: 1 }]}
+                numberOfLines={2} // Allow text to wrap
+              >
+                {option.text}
+              </Text>
+                    <Text style={styles.progressPercentage}>{percentage}%</Text>
+                  </View>
+                </View>
               </View>
             </View>
           </View>
-        </View>
+        );
+      })}
+      
+      {/* Add reactions and comments section */}
+      <View style={styles.reactionsContainer}>
+        <TouchableOpacity onPress={() => handleReaction(item.id, "like")}>
+          <Text style={styles.reactionText}>👍 {item.likes?.length || 0}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => handleReaction(item.id, "dislike")}>
+          <Text style={styles.reactionText}>
+            👎 {item.dislikes?.length || 0}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => openPollModal(item)}>
+          <Text style={styles.commentText}>💬 Comments</Text>
+        </TouchableOpacity>
       </View>
-    );
-  })}
-</View>
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   progressBarContainer: {
-    height: 45,
+    minHeight: 45,
     borderRadius: 13,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    backgroundColor: 'white',
+    overflow: "hidden",
+    justifyContent: "center",
+    backgroundColor: "white",
     elevation: 2,
-    shadowColor: 'gray'
-    
+    shadowColor: "gray",
   },
   progressBar: {
-    height: '100%',
+    height: "100%",
     borderRadius: 13,
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     top: 0,
   },
   progressTextContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    height: '100%',
-    paddingHorizontal: 10, 
-    position: 'absolute',
-    width: '100%',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    height: "100%",
+    paddingHorizontal: 10,
+    position: "absolute",
+    width: "100%",
   },
   progressPercentage: {
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: colors.DARK,
   },
   progressOption: {
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: colors.DARK,
   },
-  reactionsContainer: { flexDirection: 'row', gap: 12, marginTop: 10 },
-reactionText: { fontSize: 14, color: colors.DARK },
-commentText: { fontSize: 14, color: colors.BLUE },
-
+  reactionsContainer: { flexDirection: "row", gap: 12, marginTop: 10 },
+  reactionText: { fontSize: 14, color: colors.DARK },
+  commentText: { fontSize: 14, color: colors.BLUE },
+  searchInput: {
+    height: 50,
+    paddingHorizontal: 15,
+    fontSize: 16,
+    color: colors.DARK,
+  },
+  searchContainer: {
+    marginVertical: 20,
+    borderRadius: 100,
+    overflow: "hidden",
+    backgroundColor: colors.LIGHT,
+    elevation: 2,
+    shadowColor: "gray",
+  },
+  filterSortRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 15,
+  },
+  dropdownContainer: {
+    flex: 1,
+    marginHorizontal: 5,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: colors.LIGHT,
+    elevation: 2,
+    shadowColor: "gray",
+  },
+  dropdown: {
+    height: 50,
+    borderRadius: 10,
+    backgroundColor: colors.LIGHT,
+    paddingHorizontal: 10,
+  },
+  dropdownLabel: {
+    fontSize: 14,
+    color: colors.DARK,
+    marginBottom: 5,
+    paddingLeft: 10,
+  },
+  dropdownPlaceholder: {
+    color: colors.GRAY,
+  },
+  dropdownSelectedText: {
+    color: colors.DARK,
+  },
+  dropdownInputSearch: {
+    height: 40,
+    fontSize: 16,
+  },
+  dropdownIconStyle: {
+    width: 20,
+    height: 20,
+  },
 });
-

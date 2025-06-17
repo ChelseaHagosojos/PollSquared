@@ -5,13 +5,14 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase/firebaseConfig';
 import colors from '../../constant/colors';
 import { AntDesign } from '@expo/vector-icons'; // Back Button Icon
+import { Modal, TextInput, ScrollView } from 'react-native';
 
 export default function PollDetail() {
   const { id } = useLocalSearchParams(); // Get poll ID from URL
   const router = useRouter();
   const [poll, setPoll] = useState(null);
   const [loading, setLoading] = useState(true);
-
+const [showComments, setShowComments] = useState(false);
   useEffect(() => {
     const fetchPoll = async () => {
       try {
@@ -41,6 +42,7 @@ export default function PollDetail() {
 
   // Determine the winning option (max votes)
   const winningVoteCount = Math.max(...poll.options.map(option => option.votes));
+
 
   // Format timestamps
   const formatDate = timestamp => {
@@ -145,6 +147,117 @@ export default function PollDetail() {
           );
         }}
       />
+{/* Poll Likes/Dislikes */}  
+<View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 10 }}>
+  <Text style={{ fontSize: 14, color: colors.GRAY, marginRight: 15 }}>
+    👍 {poll.likes?.length || 0}
+  </Text>
+  <Text style={{ fontSize: 14, color: colors.GRAY }}>
+    👎 {poll.dislikes?.length || 0}
+  </Text>
+</View>
+<TouchableOpacity
+  onPress={() => setShowComments(true)}
+  style={{
+    marginTop: 20,
+    backgroundColor: colors.LIGHTBLUE,
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center'
+  }}
+>
+  <Text style={{ color: colors.DARK, fontWeight: 'bold' }}>
+    Show Comments ({poll.comments?.length || 0})
+  </Text>
+</TouchableOpacity>
+<Modal visible={showComments} animationType="slide" transparent={false}>
+  <View style={{ flex: 1, padding: 20, backgroundColor: 'white' }}>
+    <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>
+      Comments
+    </Text>
+
+    <ScrollView style={{ flex: 1 }}>
+      {poll.comments && poll.comments.length > 0 ? (
+        poll.comments.map((item, index) => (
+          <View
+            key={index}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              backgroundColor: '#f2f2f2',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10
+            }}
+          >
+            <Image
+              source={{ uri: item.avatar || 'https://placehold.co/40x40' }}
+              style={{ width: 40, height: 40, borderRadius: 20, marginRight: 10 }}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontWeight: 'bold', fontSize: 14 }}>{item.username}</Text>
+              <Text style={{ fontSize: 12, color: 'gray' }}>{formatDate(item.timestamp)}</Text>
+              <Text style={{ fontSize: 14, marginTop: 5 }}>{item.text}</Text>
+            </View>
+          </View>
+        ))
+      ) : (
+        <Text style={{ color: colors.GRAY }}>No comments yet.</Text>
+      )}
+    </ScrollView>
+
+    {/* Comment Input */}
+    <TextInput
+      placeholder="Write a comment..."
+      style={{
+        borderWidth: 1,
+        borderColor: colors.GRAY,
+        borderRadius: 10,
+        padding: 10,
+        marginTop: 10
+      }}
+    />
+
+    <TouchableOpacity
+      style={{
+        backgroundColor: colors.DARK,
+        padding: 12,
+        borderRadius: 10,
+        alignItems: 'center',
+        marginTop: 10
+      }}
+    >
+      <Text style={{ color: 'white', fontWeight: 'bold' }}>Type something...</Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity
+      onPress={() => setShowComments(false)}
+      style={{ alignItems: 'center', marginTop: 20 }}
+    >
+      <Text style={{ color: 'red', fontWeight: 'bold' }}>Close</Text>
+    </TouchableOpacity>
+  </View>
+</Modal>
+
+{/* Comments List */}
+{showComments && (
+  <View style={{ marginTop: 15 }}>
+    {poll.comments && poll.comments.length > 0 ? (
+      <FlatList
+        data={poll.comments}
+        keyExtractor={(item, index) => index.toString()}
+        renderItem={({ item }) => (
+          <View style={{ marginBottom: 10, padding: 10, backgroundColor: colors.LIGHT, borderRadius: 10 }}>
+            <Text style={{ fontWeight: 'bold', color: colors.DARK }}>{item.username}</Text>
+            <Text style={{ color: colors.GRAY }}>{item.text}</Text>
+          </View>
+        )}
+      />
+    ) : (
+      <Text style={{ color: colors.GRAY }}>No comments yet.</Text>
+    )}
+  </View>
+)}
 
       {/* Total Votes */}
       <Text style={{ textAlign: 'center', fontSize: 14, color: colors.GRAY, marginTop: 10 }}>
