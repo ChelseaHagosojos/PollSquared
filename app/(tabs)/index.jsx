@@ -25,6 +25,8 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import colors from "../../constant/colors";
+import { Dropdown } from 'react-native-element-dropdown';
+import { AntDesign } from '@expo/vector-icons';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -41,7 +43,28 @@ export default function HomeScreen() {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [commentPage, setCommentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filter, setFilter] = useState("ongoing");
+  const [sort, setSort] = useState("newest");
+  
   const COMMENTS_PER_PAGE = 5;
+
+  // Filter and sort options
+  const filterOptions = [
+    { label: "All Polls", value: "all" },
+    { label: "Ongoing", value: "ongoing" },
+    { label: "Ended", value: "ended" },
+    { label: "Participated", value: "participated" },
+    { label: "Not Participated", value: "notParticipated" },
+  ];
+
+  const sortOptions = [
+    { label: "Newest", value: "newest" },
+    { label: "Oldest", value: "oldest" },
+    { label: "Most Votes", value: "mostVotes" },
+    { label: "Least Votes", value: "leastVotes" },
+  ];
+
   const handleReaction = async (pollId, type) => {
     const pollRef = doc(db, "polls", pollId);
     const pollSnap = await getDoc(pollRef);
@@ -74,6 +97,17 @@ export default function HomeScreen() {
           : p
       )
     );
+      setInactivePolls((prev) =>
+    prev.map((p) =>
+      p.id === pollId
+        ? {
+            ...p,
+            [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
+            [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
+          }
+        : p
+    )
+  );
   };
 
   const openPollModal = async (poll) => {
@@ -185,6 +219,7 @@ export default function HomeScreen() {
               isExpired,
               userVotedOption: userVote ? userVote.option : null,
               creatorProfilePic, // Add the profile picture to the poll data
+              createdAt: pollData.createdAt?.toDate() || new Date(createdAt),
             };
           })
         );
@@ -352,7 +387,7 @@ export default function HomeScreen() {
       const selectedOption = pollData.votes[userVoteIndex].option;
       const updatedOptions = pollData.options.map((option) =>
         option.text === selectedOption
-          ? { ...option, votes: Math.max(0, option.votes - 1) } // Ensure votes don’t go negative
+          ? { ...option, votes: Math.max(0, option.votes - 1) } // Ensure votes don't go negative
           : option
       );
 
@@ -390,6 +425,58 @@ export default function HomeScreen() {
     }
   };
 
+  // Filter and sort the polls
+  const getFilteredAndSortedPolls = () => {
+    let combinedPolls = [...activePolls, ...inactivePolls];
+    
+    // Apply search filter
+    if (searchQuery) {
+      combinedPolls = combinedPolls.filter(poll => 
+        poll.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        poll.description.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Apply status filter
+    switch (filter) {
+      case "ongoing":
+        combinedPolls = combinedPolls.filter(poll => !poll.isExpired);
+        break;
+      case "ended":
+        combinedPolls = combinedPolls.filter(poll => poll.isExpired);
+        break;
+      case "participated":
+        combinedPolls = combinedPolls.filter(poll => poll.userVotedOption !== null);
+        break;
+      case "notParticipated":
+        combinedPolls = combinedPolls.filter(poll => poll.userVotedOption === null);
+        break;
+      default:
+        // "all" - no filter
+        break;
+    }
+    
+    // Apply sorting
+    switch (sort) {
+      case "newest":
+        combinedPolls.sort((a, b) => b.createdAt - a.createdAt);
+        break;
+      case "oldest":
+        combinedPolls.sort((a, b) => a.createdAt - b.createdAt);
+        break;
+      case "mostVotes":
+        combinedPolls.sort((a, b) => (b.totalVotes || 0) - (a.totalVotes || 0));
+        break;
+      case "leastVotes":
+        combinedPolls.sort((a, b) => (a.totalVotes || 0) - (b.totalVotes || 0));
+        break;
+      default:
+        break;
+    }
+    
+    return combinedPolls;
+  };
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
@@ -398,8 +485,7 @@ export default function HomeScreen() {
     );
   }
 
-  // Combine active and inactive polls
-  const combinedPolls = [...activePolls, ...inactivePolls];
+  const filteredPolls = getFilteredAndSortedPolls();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.DARK }}>
@@ -409,6 +495,7 @@ export default function HomeScreen() {
             backgroundColor: colors.DARK,
             paddingVertical: 20,
             padding: 20,
+            paddingBottom: 0,
             borderBottomRightRadius: 25,
           }}
         >
@@ -421,16 +508,15 @@ export default function HomeScreen() {
             }}
             source={require("./../../assets/images/logo3.jpg")}
           />
-          <Text
-            style={{
-              fontSize: 25,
-              color: colors.LIGHT,
-              fontWeight: "bold",
-              marginTop: 10,
-            }}
-          >
-            Welcome, {username}!
-          </Text>
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search polls..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor={colors.GRAY}
+          />
+        </View>
         </View>
       </View>
       <View
@@ -442,19 +528,78 @@ export default function HomeScreen() {
           flex: 1,
         }}
       >
-        <Text style={{ fontSize: 18, fontWeight: "bold", marginVertical: 15 }}>
-          Available Polls
-        </Text>
+
+
+        {/* Filter and Sort Row */}
+        <View style={styles.filterSortRow}>
+          {/* Filter Dropdown */}
+          <View style={styles.dropdownContainer}>
+            <Dropdown
+              style={styles.dropdown}
+              placeholderStyle={styles.dropdownPlaceholder}
+              selectedTextStyle={styles.dropdownSelectedText}
+              inputSearchStyle={styles.dropdownInputSearch}
+              iconStyle={styles.dropdownIconStyle}
+              data={filterOptions}
+              search={false}
+              maxHeight={300}
+              labelField="label"
+              valueField="value"
+              placeholder="Select filter"
+              value={filter}
+              onChange={item => setFilter(item.value)}
+              renderLeftIcon={() => (
+                <AntDesign
+                  style={styles.dropdownIcon}
+                  color={colors.DARK}
+                  name="filter"
+                  size={18}
+                />
+              )}
+            />
+          </View>
+
+          {/* Sort Dropdown */}
+          <View style={styles.dropdownContainer}>
+            <Dropdown
+              style={styles.dropdown}
+              placeholderStyle={styles.dropdownPlaceholder}
+              selectedTextStyle={styles.dropdownSelectedText}
+              inputSearchStyle={styles.dropdownInputSearch}
+              iconStyle={styles.dropdownIconStyle}
+              data={sortOptions}
+              search={false}
+              maxHeight={300}
+              labelField="label"
+              valueField="value"
+              placeholder="Select sort"
+              value={sort}
+              onChange={item => setSort(item.value)}
+              renderLeftIcon={() => (
+                <AntDesign
+                  style={styles.dropdownIcon}
+                  color={colors.DARK}
+                  name="arrowup"
+                  size={18}
+                />
+              )}
+            />
+          </View>
+        </View>
 
         {/* Combined Polls Section */}
-        {combinedPolls.length > 0 ? (
+        {filteredPolls.length > 0 ? (
           <FlatList
-            data={combinedPolls}
+            data={filteredPolls}
             keyExtractor={(item) => item.id}
             extraData={refresh} // Force FlatList to re-render
             renderItem={({ item }) =>
               item.isExpired ? (
-                <PollResultItem item={item} />
+                <PollResultItem 
+                  item={item} 
+                  handleReaction={handleReaction} 
+                  openPollModal={openPollModal} 
+                />
               ) : (
                 <PollItem
                   item={item}
@@ -463,8 +608,8 @@ export default function HomeScreen() {
                   onSelectOption={selectOption}
                   onVote={votePoll}
                   onClearVote={clearVote}
-                  loadingStates={loadingStates} // Make sure this is passed properly
-                  handleReaction={handleReaction} // <-- Pass the function here
+                  loadingStates={loadingStates}
+                  handleReaction={handleReaction}
                   openPollModal={openPollModal}
                 />
               )
@@ -479,7 +624,7 @@ export default function HomeScreen() {
               marginTop: 10,
             }}
           >
-            No polls available to vote.
+            No polls match your criteria.
           </Text>
         )}
       </View>
@@ -744,7 +889,7 @@ const PollItem = ({
         </View>
         <View
           style={{
-            backgroundColor: colors.BLUE, // Use your defined color
+            backgroundColor: colors.BLUE,
             borderRadius: 20,
             paddingVertical: 5,
             paddingHorizontal: 10,
@@ -797,6 +942,7 @@ const PollItem = ({
           }
           disabled={userHasVoted || item.isExpired}
           style={{
+            minHeight: 50,
             flexDirection: "row",
             alignItems: "center",
             backgroundColor:
@@ -833,6 +979,8 @@ const PollItem = ({
           <Text
             style={{
               color: selectedOption === option.text ? colors.DARK : colors.DARK,
+        flex: 1, // Allow text to take available space
+        flexWrap: 'wrap', // Allow text to wrap
             }}
           >
             {option.text}
@@ -844,14 +992,14 @@ const PollItem = ({
       {!userHasVoted && (
         <TouchableOpacity
           onPress={() => onVote(item.id)}
-          disabled={!selectedOption || item.isExpired || isLoading} // Disable during loading
+          disabled={!selectedOption || item.isExpired || isLoading}
           style={{
             backgroundColor: item.isExpired ? "gray" : colors.BLUE,
             padding: 10,
             marginTop: 25,
             borderRadius: 25,
             alignItems: "center",
-            opacity: item.isExpired || !selectedOption || isLoading ? 0.5 : 1, // Adjust opacity
+            opacity: item.isExpired || !selectedOption || isLoading ? 0.5 : 1,
           }}
         >
           <Text style={{ color: colors.LIGHT, fontWeight: "bold" }}>
@@ -868,14 +1016,14 @@ const PollItem = ({
       {userHasVoted && (
         <TouchableOpacity
           onPress={() => onClearVote(item.id)}
-          disabled={isLoading} // Disable during loading
+          disabled={isLoading}
           style={{
             backgroundColor: "gray",
             padding: 10,
             marginTop: 25,
             borderRadius: 25,
             alignItems: "center",
-            opacity: isLoading ? 0.5 : 1, // Adjust opacity
+            opacity: isLoading ? 0.5 : 1,
           }}
         >
           <Text style={{ color: colors.LIGHT, fontWeight: "bold" }}>
@@ -899,8 +1047,9 @@ const PollItem = ({
     </View>
   );
 };
+
 // PollResultItem component for inactive polls
-const PollResultItem = ({ item }) => {
+const PollResultItem = ({ item, handleReaction, openPollModal }) => {
   const totalVotes = item.totalVotes || 0;
   const maxVotes = Math.max(...item.options.map((option) => option.votes || 0));
 
@@ -946,7 +1095,7 @@ const PollResultItem = ({ item }) => {
         </View>
         <View
           style={{
-            backgroundColor: colors.BLUE, // Use your defined color
+            backgroundColor: colors.BLUE,
             borderRadius: 20,
             paddingVertical: 5,
             paddingHorizontal: 10,
@@ -989,7 +1138,12 @@ const PollResultItem = ({ item }) => {
                     ]}
                   />
                   <View style={styles.progressTextContainer}>
-                    <Text style={styles.progressOption}>{option.text}</Text>
+                    <Text 
+                style={[styles.progressOption, { flex: 1 }]}
+                numberOfLines={2} // Allow text to wrap
+              >
+                {option.text}
+              </Text>
                     <Text style={styles.progressPercentage}>{percentage}%</Text>
                   </View>
                 </View>
@@ -998,13 +1152,28 @@ const PollResultItem = ({ item }) => {
           </View>
         );
       })}
+      
+      {/* Add reactions and comments section */}
+      <View style={styles.reactionsContainer}>
+        <TouchableOpacity onPress={() => handleReaction(item.id, "like")}>
+          <Text style={styles.reactionText}>👍 {item.likes?.length || 0}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => handleReaction(item.id, "dislike")}>
+          <Text style={styles.reactionText}>
+            👎 {item.dislikes?.length || 0}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => openPollModal(item)}>
+          <Text style={styles.commentText}>💬 Comments</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   progressBarContainer: {
-    height: 45,
+    minHeight: 45,
     borderRadius: 13,
     overflow: "hidden",
     justifyContent: "center",
@@ -1039,4 +1208,58 @@ const styles = StyleSheet.create({
   reactionsContainer: { flexDirection: "row", gap: 12, marginTop: 10 },
   reactionText: { fontSize: 14, color: colors.DARK },
   commentText: { fontSize: 14, color: colors.BLUE },
+  searchInput: {
+    height: 50,
+    paddingHorizontal: 15,
+    fontSize: 16,
+    color: colors.DARK,
+  },
+  searchContainer: {
+    marginVertical: 20,
+    borderRadius: 100,
+    overflow: "hidden",
+    backgroundColor: colors.LIGHT,
+    elevation: 2,
+    shadowColor: "gray",
+  },
+  filterSortRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 15,
+  },
+  dropdownContainer: {
+    flex: 1,
+    marginHorizontal: 5,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: colors.LIGHT,
+    elevation: 2,
+    shadowColor: "gray",
+  },
+  dropdown: {
+    height: 50,
+    borderRadius: 10,
+    backgroundColor: colors.LIGHT,
+    paddingHorizontal: 10,
+  },
+  dropdownLabel: {
+    fontSize: 14,
+    color: colors.DARK,
+    marginBottom: 5,
+    paddingLeft: 10,
+  },
+  dropdownPlaceholder: {
+    color: colors.GRAY,
+  },
+  dropdownSelectedText: {
+    color: colors.DARK,
+  },
+  dropdownInputSearch: {
+    height: 40,
+    fontSize: 16,
+  },
+  dropdownIconStyle: {
+    width: 20,
+    height: 20,
+  },
 });

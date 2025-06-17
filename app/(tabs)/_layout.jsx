@@ -9,8 +9,8 @@ export default function TabLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarShowLabel: true, // Ensures labels are shown for better navigation
-          tabBarStyle: { backgroundColor: '#fff', paddingBottom: 5 }, // Optional styling
+          tabBarShowLabel: true,
+          tabBarStyle: { backgroundColor: '#fff', paddingBottom: 5 },
         }}
       >
         <Tabs.Screen
