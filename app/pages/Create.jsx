@@ -402,7 +402,7 @@ export default function Create() {
         step > 1 ? styles.halfWidth : styles.fullWidth
       ]}
     >
-      <Text style={styles.buttonText}>Next</Text>
+      <Text style={styles.nextbuttonText}>Next</Text>
     </TouchableOpacity>
   ) : (
     <TouchableOpacity 
@@ -414,7 +414,7 @@ export default function Create() {
       ]} 
       disabled={isLoading}
     >
-      <Text style={styles.buttonText}>{isLoading ? 'Submitting...' : 'Submit'}</Text>
+      <Text style={styles.nextbuttonText}>{isLoading ? 'Submitting...' : 'Submit'}</Text>
     </TouchableOpacity>
   )}
 </View>
@@ -700,4 +700,15 @@ fullWidth: {
 disabledButton: {
   opacity: 0.5
 },
+buttonText: {
+  color: 'black',
+  fontSize: 16,
+  fontWeight: '400',
+},
+nextbuttonText: {
+  color: 'white',
+  fontSize: 16,
+  fontWeight: '500',
+},
+
 };

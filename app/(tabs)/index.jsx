@@ -137,8 +137,12 @@ const handleReaction = async (pollId, type) => {
   const submitComment = async () => {
   if (!newComment.trim()) return;
 
+  const user = auth.currentUser;
+  if (!user) return;
+
   const userDoc = await getDoc(doc(db, "users", user.uid));
   const profilePic = userDoc.exists() ? userDoc.data().profilePic : null;
+  const username = userDoc.exists() ? userDoc.data().username : user.email;
 
   const newEntry = {
     userId: user.uid,
@@ -148,13 +152,17 @@ const handleReaction = async (pollId, type) => {
     profilePic,
   };
 
-  const updated = [...comments, newEntry];
+  // ✅ Fetch latest poll data before appending
+  const pollRef = doc(db, "polls", selectedPoll.id);
+  const pollSnapshot = await getDoc(pollRef);
+  const pollData = pollSnapshot.data();
+  const currentComments = pollData.comments || [];
 
-  await updateDoc(doc(db, "polls", selectedPoll.id), {
-    comments: updated,
-  });
+  const updated = [...currentComments, newEntry];
 
-  // Send notification to poll creator if it's not the creator commenting
+  await updateDoc(pollRef, { comments: updated });
+
+  // Send notification if needed
   if (selectedPoll.createdBy !== user.uid) {
     await sendNotification({
       recipientId: selectedPoll.createdBy,
@@ -170,6 +178,7 @@ const handleReaction = async (pollId, type) => {
   setComments(updated);
   setNewComment("");
 };
+
 
   const editComment = (index) => {
     const toEdit = comments[index];
