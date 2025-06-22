@@ -27,7 +27,13 @@ export default function TabLayout() {
             tabBarIcon: ({ color, size }) => <AntDesign name="pluscircleo" size={size} color={color} />,
           }}
         />
-
+        <Tabs.Screen
+          name="notifications"
+          options={{
+            tabBarLabel: 'Notifications',
+            tabBarIcon: ({ color, size }) => <AntDesign name="bells" size={size} color={color} />,
+          }}
+        />
         <Tabs.Screen
           name="Profile"
           options={{

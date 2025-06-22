@@ -190,10 +190,7 @@ const [showComments, setShowComments] = useState(false);
               marginBottom: 10
             }}
           >
-            <Image
-              source={{ uri: item.avatar || 'https://placehold.co/40x40' }}
-              style={{ width: 40, height: 40, borderRadius: 20, marginRight: 10 }}
-            />
+
             <View style={{ flex: 1 }}>
               <Text style={{ fontWeight: 'bold', fontSize: 14 }}>{item.username}</Text>
               <Text style={{ fontSize: 12, color: 'gray' }}>{formatDate(item.timestamp)}</Text>
@@ -206,8 +203,7 @@ const [showComments, setShowComments] = useState(false);
       )}
     </ScrollView>
 
-    {/* Comment Input */}
-    <TextInput
+    {/* <TextInput
       placeholder="Write a comment..."
       style={{
         borderWidth: 1,
@@ -228,7 +224,7 @@ const [showComments, setShowComments] = useState(false);
       }}
     >
       <Text style={{ color: 'white', fontWeight: 'bold' }}>Type something...</Text>
-    </TouchableOpacity>
+    </TouchableOpacity> */}
 
     <TouchableOpacity
       onPress={() => setShowComments(false)}
