@@ -18,16 +18,19 @@ import {
   collection,
   getDocs,
   getDoc,
+  addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   arrayUnion,
   query,
   where,
+  orderBy,
   serverTimestamp,
 } from "firebase/firestore";
 import colors from "../../constant/colors";
-import { Dropdown } from 'react-native-element-dropdown';
-import { AntDesign } from '@expo/vector-icons';
+import { Dropdown } from "react-native-element-dropdown";
+import { AntDesign } from "@expo/vector-icons";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -47,7 +50,7 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("ongoing");
   const [sort, setSort] = useState("newest");
-  
+
   const COMMENTS_PER_PAGE = 5;
 
   // Filter and sort options
@@ -66,130 +69,164 @@ export default function HomeScreen() {
     { label: "Least Votes", value: "leastVotes" },
   ];
 
-const handleReaction = async (pollId, type) => {
-  const pollRef = doc(db, "polls", pollId);
-  const pollSnap = await getDoc(pollRef);
-  const pollData = pollSnap.data();
+  const handleReaction = async (pollId, type) => {
+    const pollRef = doc(db, "polls", pollId);
+    const pollSnap = await getDoc(pollRef);
+    const pollData = pollSnap.data();
 
-  const currentArray = pollData[type === "like" ? "likes" : "dislikes"] || [];
-  const oppositeArray =
-    pollData[type === "like" ? "dislikes" : "likes"] || [];
+    const currentArray = pollData[type === "like" ? "likes" : "dislikes"] || [];
+    const oppositeArray =
+      pollData[type === "like" ? "dislikes" : "likes"] || [];
 
-  const hasReacted = currentArray.includes(user.uid);
-  const updatedCurrent = hasReacted
-    ? currentArray.filter((uid) => uid !== user.uid)
-    : [...currentArray, user.uid];
-  const updatedOpposite = oppositeArray.filter((uid) => uid !== user.uid);
+    const hasReacted = currentArray.includes(user.uid);
+    const updatedCurrent = hasReacted
+      ? currentArray.filter((uid) => uid !== user.uid)
+      : [...currentArray, user.uid];
+    const updatedOpposite = oppositeArray.filter((uid) => uid !== user.uid);
 
-  await updateDoc(pollRef, {
-    [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
-    [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
-  });
-
-  // Send notification for new reactions only (not when removing)
-  if (!hasReacted && pollData.createdBy !== user.uid) {
-    await sendNotification({
-      recipientId: pollData.createdBy,
-      senderId: user.uid,
-      senderName: username,
-      pollId: pollId,
-      pollTitle: pollData.title,
-      type: "reaction",
-      reactionType: type,
+    await updateDoc(pollRef, {
+      [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
+      [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
     });
-  }
 
-  // Update both active and inactive polls
-  setActivePolls((prev) =>
-    prev.map((p) =>
-      p.id === pollId
-        ? {
-            ...p,
-            [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
-            [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
-          }
-        : p
-    )
-  );
-  setInactivePolls((prev) =>
-    prev.map((p) =>
-      p.id === pollId
-        ? {
-            ...p,
-            [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
-            [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
-          }
-        : p
-    )
-  );
-};
+    // Send notification for new reactions only (not when removing)
+    if (!hasReacted && pollData.createdBy !== user.uid) {
+      await sendNotification({
+        recipientId: pollData.createdBy,
+        senderId: user.uid,
+        senderName: username,
+        pollId: pollId,
+        pollTitle: pollData.title,
+        type: "reaction",
+        reactionType: type,
+      });
+    }
+
+    // Update both active and inactive polls
+    setActivePolls((prev) =>
+      prev.map((p) =>
+        p.id === pollId
+          ? {
+              ...p,
+              [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
+              [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
+            }
+          : p
+      )
+    );
+    setInactivePolls((prev) =>
+      prev.map((p) =>
+        p.id === pollId
+          ? {
+              ...p,
+              [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
+              [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
+            }
+          : p
+      )
+    );
+  };
 
   const openPollModal = async (poll) => {
     setSelectedPoll(poll);
     setModalVisible(true);
     setCommentPage(1);
-    const pollRef = doc(db, "polls", poll.id);
-    const pollSnap = await getDoc(pollRef);
-    const pollData = pollSnap.data();
-    setComments(pollData.comments || []);
+    setNewComment("");
+    setEditingCommentId(null);
+
+    try {
+      const commentsRef = collection(db, "polls", poll.id, "comments");
+      const q = query(commentsRef, orderBy("timestamp", "desc")); // newest first
+      const snapshot = await getDocs(q);
+
+      const fetchedComments = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      setComments(fetchedComments);
+    } catch (error) {
+      console.error("Failed to load comments:", error);
+      alert("Could not load comments.");
+      setComments([]);
+    }
   };
+
+  const [editingCommentId, setEditingCommentId] = useState(null);
 
   const submitComment = async () => {
-  if (!newComment.trim()) return;
+    if (!newComment.trim() || !user || !selectedPoll?.id) return;
 
-  const user = auth.currentUser;
-  if (!user) return;
+    const commentsRef = collection(db, "polls", selectedPoll.id, "comments");
 
-  const userDoc = await getDoc(doc(db, "users", user.uid));
-  const profilePic = userDoc.exists() ? userDoc.data().profilePic : null;
-  const username = userDoc.exists() ? userDoc.data().username : user.email;
+    try {
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      const username = userDoc.exists() ? userDoc.data().username : user.email;
+      const profilePic = userDoc.exists() ? userDoc.data().profilePic : null;
 
-  const newEntry = {
-    userId: user.uid,
-    username,
-    text: newComment.trim(),
-    timestamp: new Date().toISOString(),
-    profilePic,
+      const commentData = {
+        userId: user.uid,
+        username,
+        text: newComment.trim(),
+        timestamp: serverTimestamp(),
+        profilePic,
+      };
+
+      if (editingCommentId) {
+        const commentDocRef = doc(commentsRef, editingCommentId);
+        await updateDoc(commentDocRef, {
+          text: newComment.trim(),
+          timestamp: serverTimestamp(),
+        });
+        setEditingCommentId(null);
+      } else {
+        // Optional: Limit max comments per poll
+        const snapshot = await getDocs(
+          query(commentsRef, where("userId", "==", user.uid))
+        );
+        if (snapshot.size >= 10) {
+          alert("You’ve reached the comment limit for this poll.");
+          return;
+        }
+
+        await addDoc(commentsRef, commentData);
+
+        if (selectedPoll.createdBy !== user.uid) {
+          await sendNotification({
+            recipientId: selectedPoll.createdBy,
+            senderId: user.uid,
+            senderName: username,
+            pollId: selectedPoll.id,
+            pollTitle: selectedPoll.title,
+            type: "comment",
+            commentText: commentData.text,
+          });
+        }
+      }
+
+      setNewComment("");
+      openPollModal(selectedPoll); // Refresh comments
+    } catch (error) {
+      console.error("Failed to submit comment:", error);
+      alert("Could not post comment.");
+    }
   };
 
-  // ✅ Fetch latest poll data before appending
-  const pollRef = doc(db, "polls", selectedPoll.id);
-  const pollSnapshot = await getDoc(pollRef);
-  const pollData = pollSnapshot.data();
-  const currentComments = pollData.comments || [];
-
-  const updated = [...currentComments, newEntry];
-
-  await updateDoc(pollRef, { comments: updated });
-
-  // Send notification if needed
-  if (selectedPoll.createdBy !== user.uid) {
-    await sendNotification({
-      recipientId: selectedPoll.createdBy,
-      senderId: user.uid,
-      senderName: username,
-      pollId: selectedPoll.id,
-      pollTitle: selectedPoll.title,
-      type: "comment",
-      commentText: newComment.trim(),
-    });
-  }
-
-  setComments(updated);
-  setNewComment("");
-};
-
-
-  const editComment = (index) => {
-    const toEdit = comments[index];
-    setNewComment(toEdit.text);
-    deleteComment(index);
+  const editComment = (comment) => {
+    setNewComment(comment.text);
+    setEditingCommentId(comment.id);
   };
 
-  const deleteComment = async (index) => {
-    const updated = comments.filter((_, i) => i !== index);
-    await updateDoc(doc(db, "polls", selectedPoll.id), { comments: updated });
-    setComments(updated);
+  const deleteComment = async (commentId) => {
+    if (!selectedPoll?.id || !commentId) return;
+
+    try {
+      await deleteDoc(doc(db, "polls", selectedPoll.id, "comments", commentId));
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+    } catch (error) {
+      console.error("Failed to delete comment:", error);
+      alert("Could not delete comment.");
+    }
   };
 
   const formatTime = (timestamp) => {
@@ -197,135 +234,137 @@ const handleReaction = async (pollId, type) => {
     return date.toLocaleString();
   };
 
-useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-    if (!currentUser) {
-      console.log("No user detected, redirecting...");
-      router.replace("/login");
-      return;
-    }
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser) {
+        console.log("No user detected, redirecting...");
+        router.replace("/login");
+        return;
+      }
 
-    setUser(currentUser);
-    setLoading(true);
+      setUser(currentUser);
+      setLoading(true);
 
-    try {
-      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-      if (userDoc.exists()) setUsername(userDoc.data().username);
+      try {
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) setUsername(userDoc.data().username);
 
-      const querySnapshot = await getDocs(
-        query(
-          collection(db, "polls"),
-          where("createdBy", "!=", currentUser.uid)
-        )
-      );
+        const querySnapshot = await getDocs(
+          query(
+            collection(db, "polls"),
+            where("createdBy", "!=", currentUser.uid)
+          )
+        );
 
-      const fetchedPolls = await Promise.all(
-        querySnapshot.docs.map(async (document) => {
-          const pollData = document.data();
-          const userVote = pollData.votes?.find(
-            (vote) => vote.userId === currentUser.uid
-          );
-          
-          // Make sure createdAt exists and is a valid timestamp
-          const createdAt = pollData.createdAt?.toDate 
-            ? pollData.createdAt.toDate().getTime() 
-            : pollData.createdAt?.seconds 
-              ? pollData.createdAt.seconds * 1000 
+        const fetchedPolls = await Promise.all(
+          querySnapshot.docs.map(async (document) => {
+            const pollData = document.data();
+            const userVote = pollData.votes?.find(
+              (vote) => vote.userId === currentUser.uid
+            );
+
+            // Make sure createdAt exists and is a valid timestamp
+            const createdAt = pollData.createdAt?.toDate
+              ? pollData.createdAt.toDate().getTime()
+              : pollData.createdAt?.seconds
+              ? pollData.createdAt.seconds * 1000
               : Date.now();
 
-          const durationMs =
-            pollData.duration?.unit === "days"
-              ? parseInt(pollData.duration.value) * 24 * 60 * 60 * 1000
-              : pollData.duration?.unit === "hours"
-              ? parseInt(pollData.duration.value) * 60 * 60 * 1000
-              : pollData.duration?.unit === "minutes"
-              ? parseInt(pollData.duration.value) * 60 * 1000
-              : 0;
+            const durationMs =
+              pollData.duration?.unit === "days"
+                ? parseInt(pollData.duration.value) * 24 * 60 * 60 * 1000
+                : pollData.duration?.unit === "hours"
+                ? parseInt(pollData.duration.value) * 60 * 60 * 1000
+                : pollData.duration?.unit === "minutes"
+                ? parseInt(pollData.duration.value) * 60 * 1000
+                : 0;
 
-          const expiresAt = createdAt + durationMs;
-          const remainingTime = expiresAt - Date.now();
-          const isExpired = remainingTime <= 0;
+            const expiresAt = createdAt + durationMs;
+            const remainingTime = expiresAt - Date.now();
+            const isExpired = remainingTime <= 0;
 
-          // Fetch creator's profile picture
-          const creatorDoc = await getDoc(
-            doc(db, "users", pollData.createdBy)
-          );
-          const creatorProfilePic = creatorDoc.exists()
-            ? creatorDoc.data().profilePic
-            : null;
+            // Fetch creator's profile picture
+            const creatorDoc = await getDoc(
+              doc(db, "users", pollData.createdBy)
+            );
+            const creatorProfilePic = creatorDoc.exists()
+              ? creatorDoc.data().profilePic
+              : null;
 
-          // Check if poll just expired
-          const wasActive = pollData.status !== "inactive";
-          const isNowExpired = isExpired;
-          
-          if (wasActive && isNowExpired) {
-            // Get all voters who aren't the creator
-            const voters = (pollData.votes || [])
-              .map(vote => vote.userId)
-              .filter(uid => uid !== pollData.createdBy);
-            
-            // Notify voters
-            await Promise.all(voters.map(voterId => 
-              sendNotification({
-                recipientId: voterId,
+            // Check if poll just expired
+            const wasActive = pollData.status !== "inactive";
+            const isNowExpired = isExpired;
+
+            if (wasActive && isNowExpired) {
+              // Get all voters who aren't the creator
+              const voters = (pollData.votes || [])
+                .map((vote) => vote.userId)
+                .filter((uid) => uid !== pollData.createdBy);
+
+              // Notify voters
+              await Promise.all(
+                voters.map((voterId) =>
+                  sendNotification({
+                    recipientId: voterId,
+                    pollId: document.id,
+                    pollTitle: pollData.title,
+                    type: "pollEnded",
+                  })
+                )
+              );
+
+              // Notify creator
+              await sendNotification({
+                recipientId: pollData.createdBy,
                 pollId: document.id,
                 pollTitle: pollData.title,
                 type: "pollEnded",
-              })
-            ));
-            
-            // Notify creator
-            await sendNotification({
-              recipientId: pollData.createdBy,
-              pollId: document.id,
-              pollTitle: pollData.title,
-              type: "pollEnded",
-            });
-          }
+              });
+            }
 
-          return {
-            id: document.id,
-            ...pollData,
-            remainingTime,
-            isExpired,
-            userVotedOption: userVote ? userVote.option : null,
-            creatorProfilePic,
-            createdAt: pollData.createdAt?.toDate() || new Date(createdAt),
-          };
-        })
-      );
-
-      // Update Firestore for expired polls in batch (optional)
-      const updates = fetchedPolls
-        .filter((poll) => poll.isExpired && poll.status !== "inactive")
-        .map(
-          async (poll) =>
-            await updateDoc(doc(db, "polls", poll.id), { status: "inactive" })
+            return {
+              id: document.id,
+              ...pollData,
+              remainingTime,
+              isExpired,
+              userVotedOption: userVote ? userVote.option : null,
+              creatorProfilePic,
+              createdAt: pollData.createdAt?.toDate() || new Date(createdAt),
+            };
+          })
         );
 
-      await Promise.all(updates); // Batch update
+        // Update Firestore for expired polls in batch (optional)
+        const updates = fetchedPolls
+          .filter((poll) => poll.isExpired && poll.status !== "inactive")
+          .map(
+            async (poll) =>
+              await updateDoc(doc(db, "polls", poll.id), { status: "inactive" })
+          );
 
-      // Separate active and inactive polls
-      setActivePolls(fetchedPolls.filter((poll) => !poll.isExpired));
-      setInactivePolls(fetchedPolls.filter((poll) => poll.isExpired));
+        await Promise.all(updates); // Batch update
 
-      // Populate selectedOptions with the user's previous votes
-      const userVotes = {};
-      fetchedPolls.forEach((poll) => {
-        if (poll.userVotedOption) {
-          userVotes[poll.id] = poll.userVotedOption;
-        }
-      });
-      setSelectedOptions(userVotes);
-    } catch (error) {
-      console.error("Error fetching polls:", error);
-    }
+        // Separate active and inactive polls
+        setActivePolls(fetchedPolls.filter((poll) => !poll.isExpired));
+        setInactivePolls(fetchedPolls.filter((poll) => poll.isExpired));
 
-    setLoading(false);
-  });
+        // Populate selectedOptions with the user's previous votes
+        const userVotes = {};
+        fetchedPolls.forEach((poll) => {
+          if (poll.userVotedOption) {
+            userVotes[poll.id] = poll.userVotedOption;
+          }
+        });
+        setSelectedOptions(userVotes);
+      } catch (error) {
+        console.error("Error fetching polls:", error);
+      }
 
-  return () => unsubscribe();
-}, []);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Handle vote selection
   const selectOption = (pollId, option) => {
@@ -341,85 +380,85 @@ useEffect(() => {
     setRefresh((prev) => !prev); // Force re-render
   };
 
-const votePoll = async (pollId) => {
-  if (!user) return;
+  const votePoll = async (pollId) => {
+    if (!user) return;
 
-  setLoadingStates((prev) => ({ ...prev, [pollId]: true }));
+    setLoadingStates((prev) => ({ ...prev, [pollId]: true }));
 
-  const selectedOption = selectedOptions[pollId];
-  if (!selectedOption) {
-    alert("Please select an option before submitting.");
-    setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
-    return;
-  }
-
-  try {
-    const pollRef = doc(db, "polls", pollId);
-    const pollSnap = await getDoc(pollRef);
-
-    if (!pollSnap.exists()) {
-      alert("Poll does not exist.");
+    const selectedOption = selectedOptions[pollId];
+    if (!selectedOption) {
+      alert("Please select an option before submitting.");
       setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
       return;
     }
 
-    const pollData = pollSnap.data();
+    try {
+      const pollRef = doc(db, "polls", pollId);
+      const pollSnap = await getDoc(pollRef);
 
-    if (pollData.votes?.some((vote) => vote.userId === user.uid)) {
-      alert("You have already voted in this poll.");
-      setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
-      return;
-    }
+      if (!pollSnap.exists()) {
+        alert("Poll does not exist.");
+        setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
+        return;
+      }
 
-    const updatedOptions = pollData.options.map((option) =>
-      option.text === selectedOption
-        ? { ...option, votes: option.votes + 1 }
-        : option
-    );
+      const pollData = pollSnap.data();
 
-    await updateDoc(pollRef, {
-      votes: arrayUnion({ userId: user.uid, option: selectedOption }),
-      options: updatedOptions,
-      totalVotes: (pollData.totalVotes || 0) + 1,
-    });
+      if (pollData.votes?.some((vote) => vote.userId === user.uid)) {
+        alert("You have already voted in this poll.");
+        setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
+        return;
+      }
 
-    // Send notification to poll creator
-    if (pollData.createdBy !== user.uid) {
-      await sendNotification({
-        recipientId: pollData.createdBy,
-        senderId: user.uid,
-        senderName: username,
-        pollId: pollId,
-        pollTitle: pollData.title,
-        type: "vote",
+      const updatedOptions = pollData.options.map((option) =>
+        option.text === selectedOption
+          ? { ...option, votes: option.votes + 1 }
+          : option
+      );
+
+      await updateDoc(pollRef, {
+        votes: arrayUnion({ userId: user.uid, option: selectedOption }),
+        options: updatedOptions,
+        totalVotes: (pollData.totalVotes || 0) + 1,
       });
+
+      // Send notification to poll creator
+      if (pollData.createdBy !== user.uid) {
+        await sendNotification({
+          recipientId: pollData.createdBy,
+          senderId: user.uid,
+          senderName: username,
+          pollId: pollId,
+          pollTitle: pollData.title,
+          type: "vote",
+        });
+      }
+
+      // Re-fetch updated poll data
+      const updatedPollSnap = await getDoc(pollRef);
+      const updatedPollData = updatedPollSnap.data();
+
+      setActivePolls((prevPolls) =>
+        prevPolls.map((poll) => {
+          if (poll.id === pollId) {
+            return {
+              ...updatedPollData,
+              id: pollId,
+              userVotedOption: selectedOption,
+              remainingTime: poll.remainingTime,
+              creatorProfilePic: poll.creatorProfilePic,
+            };
+          }
+          return poll;
+        })
+      );
+    } catch (error) {
+      console.error("Error voting:", error);
+      alert("Failed to submit vote.");
+    } finally {
+      setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
     }
-
-    // Re-fetch updated poll data
-    const updatedPollSnap = await getDoc(pollRef);
-    const updatedPollData = updatedPollSnap.data();
-
-    setActivePolls((prevPolls) =>
-      prevPolls.map((poll) => {
-        if (poll.id === pollId) {
-          return {
-            ...updatedPollData,
-            id: pollId,
-            userVotedOption: selectedOption,
-            remainingTime: poll.remainingTime,
-            creatorProfilePic: poll.creatorProfilePic,
-          };
-        }
-        return poll;
-      })
-    );
-  } catch (error) {
-    console.error("Error voting:", error);
-    alert("Failed to submit vote.");
-  } finally {
-    setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
-  }
-};
+  };
 
   const clearVote = async (pollId) => {
     if (!user) return;
@@ -500,34 +539,39 @@ const votePoll = async (pollId) => {
   // Filter and sort the polls
   const getFilteredAndSortedPolls = () => {
     let combinedPolls = [...activePolls, ...inactivePolls];
-    
+
     // Apply search filter
     if (searchQuery) {
-      combinedPolls = combinedPolls.filter(poll => 
-        poll.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        poll.description.toLowerCase().includes(searchQuery.toLowerCase())
+      combinedPolls = combinedPolls.filter(
+        (poll) =>
+          poll.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          poll.description.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
-    
+
     // Apply status filter
     switch (filter) {
       case "ongoing":
-        combinedPolls = combinedPolls.filter(poll => !poll.isExpired);
+        combinedPolls = combinedPolls.filter((poll) => !poll.isExpired);
         break;
       case "ended":
-        combinedPolls = combinedPolls.filter(poll => poll.isExpired);
+        combinedPolls = combinedPolls.filter((poll) => poll.isExpired);
         break;
       case "participated":
-        combinedPolls = combinedPolls.filter(poll => poll.userVotedOption !== null);
+        combinedPolls = combinedPolls.filter(
+          (poll) => poll.userVotedOption !== null
+        );
         break;
       case "notParticipated":
-        combinedPolls = combinedPolls.filter(poll => poll.userVotedOption === null);
+        combinedPolls = combinedPolls.filter(
+          (poll) => poll.userVotedOption === null
+        );
         break;
       default:
         // "all" - no filter
         break;
     }
-    
+
     // Apply sorting
     switch (sort) {
       case "newest":
@@ -545,7 +589,7 @@ const votePoll = async (pollId) => {
       default:
         break;
     }
-    
+
     return combinedPolls;
   };
 
@@ -580,15 +624,15 @@ const votePoll = async (pollId) => {
             }}
             source={require("./../../assets/images/logo3.jpg")}
           />
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search polls..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor={colors.GRAY}
-          />
-        </View>
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search polls..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor={colors.GRAY}
+            />
+          </View>
         </View>
       </View>
       <View
@@ -600,8 +644,6 @@ const votePoll = async (pollId) => {
           flex: 1,
         }}
       >
-
-
         {/* Filter and Sort Row */}
         <View style={styles.filterSortRow}>
           {/* Filter Dropdown */}
@@ -619,7 +661,7 @@ const votePoll = async (pollId) => {
               valueField="value"
               placeholder="Select filter"
               value={filter}
-              onChange={item => setFilter(item.value)}
+              onChange={(item) => setFilter(item.value)}
               renderLeftIcon={() => (
                 <AntDesign
                   style={styles.dropdownIcon}
@@ -646,7 +688,7 @@ const votePoll = async (pollId) => {
               valueField="value"
               placeholder="Select sort"
               value={sort}
-              onChange={item => setSort(item.value)}
+              onChange={(item) => setSort(item.value)}
               renderLeftIcon={() => (
                 <AntDesign
                   style={styles.dropdownIcon}
@@ -667,10 +709,10 @@ const votePoll = async (pollId) => {
             extraData={refresh} // Force FlatList to re-render
             renderItem={({ item }) =>
               item.isExpired ? (
-                <PollResultItem 
-                  item={item} 
-                  handleReaction={handleReaction} 
-                  openPollModal={openPollModal} 
+                <PollResultItem
+                  item={item}
+                  handleReaction={handleReaction}
+                  openPollModal={openPollModal}
                 />
               ) : (
                 <PollItem
@@ -767,8 +809,8 @@ const votePoll = async (pollId) => {
             </View>
             <FlatList
               data={comments.slice(0, commentPage * COMMENTS_PER_PAGE)}
-              keyExtractor={(item, index) => index.toString()}
-              renderItem={({ item, index }) => (
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
                 <View
                   style={{
                     backgroundColor: "#f2f2f2",
@@ -802,12 +844,13 @@ const votePoll = async (pollId) => {
                       {item.username}
                     </Text>
                     <Text style={{ fontSize: 12, color: colors.GRAY }}>
-                      {formatTime(item.timestamp)}
+                      {formatTime(item.timestamp?.toDate?.() || new Date())}
                     </Text>
                     <Text style={{ fontSize: 14, marginTop: 5 }}>
                       {item.text}
                     </Text>
 
+                    {/* Edit/Delete Options */}
                     {item.userId === user.uid && (
                       <View
                         style={{
@@ -817,14 +860,16 @@ const votePoll = async (pollId) => {
                           gap: 12,
                         }}
                       >
-                        <TouchableOpacity onPress={() => editComment(index)}>
+                        <TouchableOpacity onPress={() => editComment(item)}>
                           <Text
                             style={{ color: colors.BLUE, fontWeight: "600" }}
                           >
                             Edit
                           </Text>
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={() => deleteComment(index)}>
+                        <TouchableOpacity
+                          onPress={() => deleteComment(item.id)}
+                        >
                           <Text style={{ color: "red", fontWeight: "600" }}>
                             Delete
                           </Text>
@@ -1051,8 +1096,8 @@ const PollItem = ({
           <Text
             style={{
               color: selectedOption === option.text ? colors.DARK : colors.DARK,
-        flex: 1, // Allow text to take available space
-        flexWrap: 'wrap', // Allow text to wrap
+              flex: 1, // Allow text to take available space
+              flexWrap: "wrap", // Allow text to wrap
             }}
           >
             {option.text}
@@ -1210,12 +1255,12 @@ const PollResultItem = ({ item, handleReaction, openPollModal }) => {
                     ]}
                   />
                   <View style={styles.progressTextContainer}>
-                    <Text 
-                style={[styles.progressOption, { flex: 1 }]}
-                numberOfLines={2} // Allow text to wrap
-              >
-                {option.text}
-              </Text>
+                    <Text
+                      style={[styles.progressOption, { flex: 1 }]}
+                      numberOfLines={2} // Allow text to wrap
+                    >
+                      {option.text}
+                    </Text>
                     <Text style={styles.progressPercentage}>{percentage}%</Text>
                   </View>
                 </View>
@@ -1224,7 +1269,7 @@ const PollResultItem = ({ item, handleReaction, openPollModal }) => {
           </View>
         );
       })}
-      
+
       {/* Add reactions and comments section */}
       <View style={styles.reactionsContainer}>
         <TouchableOpacity onPress={() => handleReaction(item.id, "like")}>
