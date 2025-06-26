@@ -1098,13 +1098,13 @@ const formatDateLabel = (date) => {
 
   // For today's posts
   if (postDate.toDateString() === now.toDateString()) {
-    if (diffInSeconds < 60) return `Just now (${formatTime(postDate)})`;
+    if (diffInSeconds < 60) return `Just now`;
     
     const diffInMinutes = Math.floor(diffInSeconds / 60);
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago (${formatTime(postDate)})`;
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
     
     const diffInHours = Math.floor(diffInMinutes / 60);
-    return `${diffInHours}h ago (${formatTime(postDate)})`;
+    return `${diffInHours}h ago`;
   }
 
   // For yesterday's posts
@@ -1120,10 +1120,31 @@ const formatDateLabel = (date) => {
     day: 'numeric',
   }) + ` at ${formatTime(postDate)}`;
 };
+  const getThemeColors = () => {
+    switch(item.theme) {
+      case 'red':
+        return { bg: colors.REDBG, main: colors.REDMAIN, sec: colors.REDSEC};
+      case 'orange':
+        return { bg: colors.ORGBG, main: colors.ORGMAIN, sec: colors.ORGSEC };
+      case 'yellow':
+        return { bg: colors.YELBG, main: colors.YELMAIN, sec: colors.YELSEC };
+      case 'green':
+        return { bg: colors.GRBG, main: colors.GRMAIN, sec: colors.GRSEC };
+      case 'blue':
+        return { bg: colors.BLBG, main: colors.BLMAIN, sec: colors.BLSEC };
+      case 'violet':
+        return { bg: colors.VIOBG, main: colors.VIOMAIN, sec: colors.VIOSEC };
+      case 'pink':
+        return { bg: colors.PINKBG, main: colors.PINKMAIN, sec: colors.PINKSEC };
+      default:
+        return { bg: 'white', main: colors.BLUE, sec: 'white' }; // Default theme
+    }
+  };
+  const theme = getThemeColors();
   return (
     <View
       style={{
-        backgroundColor: "white",
+        backgroundColor: theme.bg,
         padding: 20,
         paddingBottom: 30,
         marginBottom: 25,
@@ -1177,7 +1198,7 @@ const formatDateLabel = (date) => {
 </View>
         <View
           style={{
-            backgroundColor: colors.BLUE,
+            backgroundColor: theme.main,
             borderRadius: 20,
             paddingVertical: 5,
             paddingHorizontal: 10,
@@ -1197,7 +1218,7 @@ const formatDateLabel = (date) => {
       <Text
         style={{
           fontSize: 14,
-          color: item.isExpired ? "red" : colors.BLUE,
+          color: item.isExpired ? "red" : theme.main,
           marginVertical: 10,
         }}
       >
@@ -1234,7 +1255,7 @@ const formatDateLabel = (date) => {
             flexDirection: "row",
             alignItems: "center",
             backgroundColor:
-              selectedOption === option.text ? colors.LIGHTBLUE : "white",
+              selectedOption === option.text ? theme.sec : "white",
             padding: 10,
             marginTop: 8,
             borderRadius: 15,
@@ -1282,7 +1303,7 @@ const formatDateLabel = (date) => {
           onPress={() => onVote(item.id)}
           disabled={!selectedOption || item.isExpired || isLoading}
           style={{
-            backgroundColor: item.isExpired ? "gray" : colors.BLUE,
+            backgroundColor: item.isExpired ? "gray" : theme.main,
             padding: 10,
             marginTop: 25,
             borderRadius: 25,
@@ -1338,12 +1359,12 @@ const formatDateLabel = (date) => {
     <AntDesign
       name={item.likes?.includes(user?.uid) ? "like1" : "like2"}
       size={20}
-      color={item.likes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY}
+      color={item.likes?.includes(user?.uid) ? theme.main : colors.LIGHTGRAY}
     />
     <Text style={{
       marginLeft: 5,
       fontSize: 14,
-      color: item.likes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY
+      color: item.likes?.includes(user?.uid) ? theme.main : colors.LIGHTGRAY
     }}>
       {item.likes?.length || 0}
     </Text>
@@ -1357,12 +1378,12 @@ const formatDateLabel = (date) => {
     <AntDesign
       name={item.dislikes?.includes(user?.uid) ? "dislike1" : "dislike2"}
       size={20}
-      color={item.dislikes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY}
+      color={item.dislikes?.includes(user?.uid) ? theme.main : colors.LIGHTGRAY}
     />
     <Text style={{
       marginLeft: 5,
       fontSize: 14,
-      color: item.dislikes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY
+      color: item.dislikes?.includes(user?.uid) ? theme.main : colors.LIGHTGRAY
     }}>
       {item.dislikes?.length || 0}
     </Text>
