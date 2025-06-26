@@ -127,90 +127,83 @@ export default function HomeScreen() {
     );
   };
 
-  const openPollModal = async (poll) => {
-    setSelectedPoll(poll);
-    setModalVisible(true);
-    setCommentPage(1);
-    setNewComment("");
-    setEditingCommentId(null);
+const openPollModal = async (poll) => {
+  setSelectedPoll(poll);
+  setModalVisible(true);
+  setCommentPage(1); // Reset to first page when opening modal
+  setNewComment("");
+  setEditingCommentId(null);
 
-    try {
-      const commentsRef = collection(db, "polls", poll.id, "comments");
-      const q = query(commentsRef, orderBy("timestamp", "desc")); // newest first
-      const snapshot = await getDocs(q);
+  try {
+    const commentsRef = collection(db, "polls", poll.id, "comments");
+    const q = query(commentsRef, orderBy("timestamp", "desc"));
+    const snapshot = await getDocs(q);
 
-      const fetchedComments = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+    const fetchedComments = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
-      setComments(fetchedComments);
-    } catch (error) {
-      console.error("Failed to load comments:", error);
-      alert("Could not load comments.");
-      setComments([]);
-    }
-  };
+    setComments(fetchedComments);
+  } catch (error) {
+    console.error("Failed to load comments:", error);
+    alert("Could not load comments.");
+    setComments([]);
+  }
+};
 
   const [editingCommentId, setEditingCommentId] = useState(null);
 
-  const submitComment = async () => {
-    if (!newComment.trim() || !user || !selectedPoll?.id) return;
+const submitComment = async () => {
+  if (!newComment.trim() || !user || !selectedPoll?.id) return;
 
-    const commentsRef = collection(db, "polls", selectedPoll.id, "comments");
+  const commentsRef = collection(db, "polls", selectedPoll.id, "comments");
 
-    try {
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      const username = userDoc.exists() ? userDoc.data().username : user.email;
-      const profilePic = userDoc.exists() ? userDoc.data().profilePic : null;
+  try {
+    const userDoc = await getDoc(doc(db, "users", user.uid));
+    const username = userDoc.exists() ? userDoc.data().username : user.email;
+    const profilePic = userDoc.exists() ? userDoc.data().profilePic : null;
 
-      const commentData = {
-        userId: user.uid,
-        username,
+    const commentData = {
+      userId: user.uid,
+      username,
+      text: newComment.trim(),
+      timestamp: serverTimestamp(),
+      profilePic: profilePic || "", 
+    };
+
+    if (editingCommentId) {
+      const commentDocRef = doc(commentsRef, editingCommentId);
+      await updateDoc(commentDocRef, {
         text: newComment.trim(),
         timestamp: serverTimestamp(),
-        profilePic,
-      };
+      });
+      setEditingCommentId(null);
+    } else {
+      // REMOVED THE COMMENT LIMIT CHECK
+      await addDoc(commentsRef, commentData);
 
-      if (editingCommentId) {
-        const commentDocRef = doc(commentsRef, editingCommentId);
-        await updateDoc(commentDocRef, {
-          text: newComment.trim(),
-          timestamp: serverTimestamp(),
+      if (selectedPoll.createdBy !== user.uid) {
+        await sendNotification({
+          recipientId: selectedPoll.createdBy,
+          senderId: user.uid,
+          senderName: username,
+          pollId: selectedPoll.id,
+          pollTitle: selectedPoll.title,
+          type: "comment",
+          commentText: commentData.text,
         });
-        setEditingCommentId(null);
-      } else {
-        // Optional: Limit max comments per poll
-        const snapshot = await getDocs(
-          query(commentsRef, where("userId", "==", user.uid))
-        );
-        if (snapshot.size >= 10) {
-          alert("You’ve reached the comment limit for this poll.");
-          return;
-        }
-
-        await addDoc(commentsRef, commentData);
-
-        if (selectedPoll.createdBy !== user.uid) {
-          await sendNotification({
-            recipientId: selectedPoll.createdBy,
-            senderId: user.uid,
-            senderName: username,
-            pollId: selectedPoll.id,
-            pollTitle: selectedPoll.title,
-            type: "comment",
-            commentText: commentData.text,
-          });
-        }
       }
-
-      setNewComment("");
-      openPollModal(selectedPoll); // Refresh comments
-    } catch (error) {
-      console.error("Failed to submit comment:", error);
-      alert("Could not post comment.");
     }
-  };
+
+    setNewComment("");
+    openPollModal(selectedPoll); // Refresh comments
+  } catch (error) {
+    console.error("Failed to submit comment:", error);
+    alert("Could not post comment.");
+  }
+};
+
 
   const editComment = (comment) => {
     setNewComment(comment.text);
@@ -808,9 +801,9 @@ export default function HomeScreen() {
               </Text>
             </View>
             <FlatList
-              data={comments.slice(0, commentPage * COMMENTS_PER_PAGE)}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
+                data={comments.slice(0, commentPage * COMMENTS_PER_PAGE)}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
                 <View
                   style={{
                     backgroundColor: "#f2f2f2",
@@ -880,7 +873,22 @@ export default function HomeScreen() {
                 </View>
               )}
             />
-
+            {comments.length > commentPage * COMMENTS_PER_PAGE && (
+        <TouchableOpacity
+          onPress={() => setCommentPage(prev => prev + 1)}
+          style={{
+            padding: 12,
+            backgroundColor: colors.DARK,
+            borderRadius: 10,
+            alignItems: 'center',
+            marginTop: 10,
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: 'bold' }}>
+            See More Comments
+          </Text>
+        </TouchableOpacity>
+      )}
             {/* Input Section */}
             <View
               style={{
