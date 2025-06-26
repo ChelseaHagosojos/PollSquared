@@ -32,6 +32,7 @@ import colors from "../../constant/colors";
 import { Dropdown } from "react-native-element-dropdown";
 import { AntDesign } from "@expo/vector-icons";
 import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -608,11 +609,11 @@ const submitComment = async () => {
   const filteredPolls = getFilteredAndSortedPolls();
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.DARK }}>
+    <View style={{ flex: 1, backgroundColor: colors.BLUE }}>
       <View style={{ backgroundColor: colors.LIGHT }}>
 <View
   style={{
-    backgroundColor: colors.DARK,
+    backgroundColor: colors.BLUE,
     paddingVertical: 20,
     paddingHorizontal: 20,
     paddingBottom: 20, // Added proper bottom padding
@@ -784,12 +785,20 @@ const submitComment = async () => {
               item.isExpired ? (
                 <PollResultItem
                   item={item}
+                  user={user}
+                  userHasVoted={item.userVotedOption !== null}
+                  selectedOption={selectedOptions[item.id]}
+                  onSelectOption={selectOption}
+                  onVote={votePoll}
+                  onClearVote={clearVote}
+                  loadingStates={loadingStates}
                   handleReaction={handleReaction}
                   openPollModal={openPollModal}
                 />
               ) : (
                 <PollItem
                   item={item}
+                  user={user}
                   userHasVoted={item.userVotedOption !== null}
                   selectedOption={selectedOptions[item.id]}
                   onSelectOption={selectOption}
@@ -1049,6 +1058,7 @@ const PollItem = ({
   loadingStates,
   handleReaction,
   openPollModal,
+  user,
 }) => {
   const isLoading = loadingStates[item.id] || false;
 const formatDateLabel = (date) => {
@@ -1296,25 +1306,87 @@ const formatDateLabel = (date) => {
           </Text>
         </TouchableOpacity>
       )}
-      <View style={styles.reactionsContainer}>
-        <TouchableOpacity onPress={() => handleReaction(item.id, "like")}>
-          <Text style={styles.reactionText}>👍 {item.likes?.length || 0}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => handleReaction(item.id, "dislike")}>
-          <Text style={styles.reactionText}>
-            👎 {item.dislikes?.length || 0}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => openPollModal(item)}>
-          <Text style={styles.commentText}>💬 Comments</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Reactions and Actions Row */}
+<View style={{
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginTop: 15,
+  paddingHorizontal: 10,
+  borderTopWidth: 1,
+  borderTopColor: '#f0f0f0',
+  paddingTop: 20,
+}}>
+{/* Like Button */}
+  <TouchableOpacity 
+    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}
+    onPress={() => handleReaction(item.id, "like")}
+  >
+    <MaterialCommunityIcons
+      name={item.likes?.includes(user?.uid) ? "thumb-up" : "thumb-up-outline"}
+      size={20}
+      color={item.likes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY}
+    />
+    <Text style={{
+      marginLeft: 5,
+      fontSize: 14,
+      color: item.likes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY
+    }}>
+      {item.likes?.length || 0}
+    </Text>
+  </TouchableOpacity>
+
+  {/* Dislike Button */}
+  <TouchableOpacity 
+    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}
+    onPress={() => handleReaction(item.id, "dislike")}
+  >
+    <MaterialCommunityIcons
+      name={item.dislikes?.includes(user?.uid) ? "thumb-down" : "thumb-down-outline"}
+      size={20}
+      color={item.dislikes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY}
+    />
+    <Text style={{
+      marginLeft: 5,
+      fontSize: 14,
+      color: item.dislikes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY
+    }}>
+      {item.dislikes?.length || 0}
+    </Text>
+  </TouchableOpacity>
+
+  {/* Comment Button */}
+  <TouchableOpacity 
+    style={{ flexDirection: 'row', alignItems: 'center' }}
+    onPress={() => openPollModal(item)}
+  >
+    <Ionicons
+      name="chatbubble-outline"
+      size={20}
+      color={colors.LIGHTGRAY}
+    />
+    <Text style={{ marginLeft: 5, fontSize: 14, color: colors.LIGHTGRAY }}>
+      Comments
+    </Text>
+  </TouchableOpacity>
+
+  {/* Share Button */}
+  <TouchableOpacity 
+    style={{ flexDirection: 'row', alignItems: 'center' }}
+    onPress={() => handleShare(item)}
+  >
+    <Ionicons
+      name="share-social-outline"
+      size={20}
+      color={colors.LIGHTGRAY}
+    />
+  </TouchableOpacity>
+</View>
     </View>
   );
 };
 
 // PollResultItem component for inactive polls
-const PollResultItem = ({ item, handleReaction, openPollModal }) => {
+const PollResultItem = ({ item, handleReaction, openPollModal, user }) => {
   const totalVotes = item.totalVotes || 0;
   const maxVotes = Math.max(...item.options.map((option) => option.votes || 0));
 const formatDateLabel = (date) => {
@@ -1474,19 +1546,80 @@ const formatDateLabel = (date) => {
       })}
 
       {/* Add reactions and comments section */}
-      <View style={styles.reactionsContainer}>
-        <TouchableOpacity onPress={() => handleReaction(item.id, "like")}>
-          <Text style={styles.reactionText}>👍 {item.likes?.length || 0}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => handleReaction(item.id, "dislike")}>
-          <Text style={styles.reactionText}>
-            👎 {item.dislikes?.length || 0}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => openPollModal(item)}>
-          <Text style={styles.commentText}>💬 Comments</Text>
-        </TouchableOpacity>
-      </View>
+      <View style={{
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginTop: 15,
+  paddingHorizontal: 10,
+  borderTopWidth: 1,
+  borderTopColor: '#f0f0f0',
+  paddingTop: 20,
+}}>
+{/* Like Button */}
+  <TouchableOpacity 
+    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}
+    onPress={() => handleReaction(item.id, "like")}
+  >
+    <MaterialCommunityIcons
+      name={item.likes?.includes(user?.uid) ? "thumb-up" : "thumb-up-outline"}
+      size={20}
+      color={item.likes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY}
+    />
+    <Text style={{
+      marginLeft: 5,
+      fontSize: 14,
+      color: item.likes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY
+    }}>
+      {item.likes?.length || 0}
+    </Text>
+  </TouchableOpacity>
+
+  {/* Dislike Button */}
+  <TouchableOpacity 
+    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}
+    onPress={() => handleReaction(item.id, "dislike")}
+  >
+    <MaterialCommunityIcons
+      name={item.dislikes?.includes(user?.uid) ? "thumb-down" : "thumb-down-outline"}
+      size={20}
+      color={item.dislikes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY}
+    />
+    <Text style={{
+      marginLeft: 5,
+      fontSize: 14,
+      color: item.dislikes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY
+    }}>
+      {item.dislikes?.length || 0}
+    </Text>
+  </TouchableOpacity>
+
+  {/* Comment Button */}
+  <TouchableOpacity 
+    style={{ flexDirection: 'row', alignItems: 'center' }}
+    onPress={() => openPollModal(item)}
+  >
+    <Ionicons
+      name="chatbubble-outline"
+      size={20}
+      color={colors.LIGHTGRAY}
+    />
+    <Text style={{ marginLeft: 5, fontSize: 14, color: colors.LIGHTGRAY }}>
+      Comments
+    </Text>
+  </TouchableOpacity>
+
+  {/* Share Button */}
+  <TouchableOpacity 
+    style={{ flexDirection: 'row', alignItems: 'center' }}
+    onPress={() => handleShare(item)}
+  >
+    <Ionicons
+      name="share-social-outline"
+      size={20}
+      color={colors.LIGHTGRAY}
+    />
+  </TouchableOpacity>
+</View>
     </View>
   );
 };
