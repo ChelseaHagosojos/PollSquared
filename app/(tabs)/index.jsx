@@ -53,6 +53,7 @@ export default function HomeScreen() {
   const [searchVisible, setSearchVisible] = useState(false);
   const [filter, setFilter] = useState("ongoing");
   const [sort, setSort] = useState("newest");
+const [searchType, setSearchType] = useState("polls"); // 'polls' or 'users'
 
   const COMMENTS_PER_PAGE = 5;
 
@@ -688,9 +689,13 @@ const submitComment = async () => {
     )}
 
     {/* Notification button */}
-    <TouchableOpacity style={{ padding: 8 }}>
-      <Ionicons name="notifications-outline" size={24} color="white" />
-    </TouchableOpacity>
+    <TouchableOpacity
+  style={{ padding: 8 }}
+  onPress={() => router.push('./pages/notifications')}
+>
+  <Ionicons name="notifications-outline" size={24} color="white" />
+</TouchableOpacity>
+
 
 <TouchableOpacity style={{ marginLeft: 8 }}>
   <Image
@@ -1316,13 +1321,14 @@ const formatDateLabel = (date) => {
   borderTopColor: '#f0f0f0',
   paddingTop: 20,
 }}>
-{/* Like Button */}
+
+  {/* Like Button */}
   <TouchableOpacity 
-    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}
+    style={{ flexDirection: 'row', alignItems: 'center' }}
     onPress={() => handleReaction(item.id, "like")}
   >
-    <MaterialCommunityIcons
-      name={item.likes?.includes(user?.uid) ? "thumb-up" : "thumb-up-outline"}
+    <AntDesign
+      name={item.likes?.includes(user?.uid) ? "like1" : "like2"}
       size={20}
       color={item.likes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY}
     />
@@ -1337,11 +1343,11 @@ const formatDateLabel = (date) => {
 
   {/* Dislike Button */}
   <TouchableOpacity 
-    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}
+    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 3 }}
     onPress={() => handleReaction(item.id, "dislike")}
   >
-    <MaterialCommunityIcons
-      name={item.dislikes?.includes(user?.uid) ? "thumb-down" : "thumb-down-outline"}
+    <AntDesign
+      name={item.dislikes?.includes(user?.uid) ? "dislike1" : "dislike2"}
       size={20}
       color={item.dislikes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY}
     />
@@ -1356,11 +1362,11 @@ const formatDateLabel = (date) => {
 
   {/* Comment Button */}
   <TouchableOpacity 
-    style={{ flexDirection: 'row', alignItems: 'center' }}
+    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 40 }}
     onPress={() => openPollModal(item)}
   >
-    <Ionicons
-      name="chatbubble-outline"
+    <AntDesign
+      name="message1"
       size={20}
       color={colors.LIGHTGRAY}
     />
@@ -1374,13 +1380,15 @@ const formatDateLabel = (date) => {
     style={{ flexDirection: 'row', alignItems: 'center' }}
     onPress={() => handleShare(item)}
   >
-    <Ionicons
-      name="share-social-outline"
+    <AntDesign
+      name="sharealt"
       size={20}
       color={colors.LIGHTGRAY}
     />
   </TouchableOpacity>
+
 </View>
+
     </View>
   );
 };
@@ -1555,13 +1563,14 @@ const formatDateLabel = (date) => {
   borderTopColor: '#f0f0f0',
   paddingTop: 20,
 }}>
-{/* Like Button */}
+
+  {/* Like Button */}
   <TouchableOpacity 
     style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}
     onPress={() => handleReaction(item.id, "like")}
   >
-    <MaterialCommunityIcons
-      name={item.likes?.includes(user?.uid) ? "thumb-up" : "thumb-up-outline"}
+    <AntDesign
+      name={item.likes?.includes(user?.uid) ? "like1" : "like2"}
       size={20}
       color={item.likes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY}
     />
@@ -1579,8 +1588,8 @@ const formatDateLabel = (date) => {
     style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}
     onPress={() => handleReaction(item.id, "dislike")}
   >
-    <MaterialCommunityIcons
-      name={item.dislikes?.includes(user?.uid) ? "thumb-down" : "thumb-down-outline"}
+    <AntDesign
+      name={item.dislikes?.includes(user?.uid) ? "dislike1" : "dislike2"}
       size={20}
       color={item.dislikes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY}
     />
@@ -1598,8 +1607,8 @@ const formatDateLabel = (date) => {
     style={{ flexDirection: 'row', alignItems: 'center' }}
     onPress={() => openPollModal(item)}
   >
-    <Ionicons
-      name="chatbubble-outline"
+    <AntDesign
+      name="message1"
       size={20}
       color={colors.LIGHTGRAY}
     />
@@ -1613,13 +1622,15 @@ const formatDateLabel = (date) => {
     style={{ flexDirection: 'row', alignItems: 'center' }}
     onPress={() => handleShare(item)}
   >
-    <Ionicons
-      name="share-social-outline"
+    <AntDesign
+      name="sharealt"
       size={20}
       color={colors.LIGHTGRAY}
     />
   </TouchableOpacity>
+
 </View>
+
     </View>
   );
 };

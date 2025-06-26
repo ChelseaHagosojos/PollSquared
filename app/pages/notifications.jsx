@@ -5,6 +5,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
+  Pressable,
 } from "react-native";
 import React, { useEffect, useState } from "react";
 import { auth, db } from "../../firebase/firebaseConfig";
@@ -16,16 +18,19 @@ import {
   onSnapshot,
   doc,
   updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import colors from "../../constant/colors";
 import { useRouter } from "expo-router";
-import { AntDesign } from "@expo/vector-icons";
+import { AntDesign, MaterialIcons, Entypo } from "@expo/vector-icons";
 
 export default function Notifications() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState(null);
+  const [menuVisible, setMenuVisible] = useState(false);
   const router = useRouter();
 
   const onRefresh = async () => {
@@ -59,14 +64,10 @@ export default function Notifications() {
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-
-        // ❌ Skip 'pollEnded' if user is not the poll creator
         if (data.type === "pollEnded" && data.pollOwnerId !== user.uid) return;
-
         fetchedNotifications.push({ id: doc.id, ...data });
       });
 
-      // 🔽 Sort notifications by timestamp (newest first)
       fetchedNotifications.sort((a, b) => b.timestamp - a.timestamp);
       setNotifications(fetchedNotifications);
       setLoading(false);
@@ -87,14 +88,25 @@ export default function Notifications() {
 
   const markAllAsRead = async () => {
     try {
-      const batch = notifications.map((notification) =>
-        updateDoc(doc(db, "notifications", notification.id), {
-          read: true,
-        })
-      );
+      const batch = notifications
+        .filter(notification => !notification.read)
+        .map((notification) =>
+          updateDoc(doc(db, "notifications", notification.id), {
+            read: true,
+          })
+        );
       await Promise.all(batch);
     } catch (error) {
       console.error("Error marking all notifications as read:", error);
+    }
+  };
+
+  const deleteNotification = async (notificationId) => {
+    try {
+      await deleteDoc(doc(db, "notifications", notificationId));
+      setMenuVisible(false);
+    } catch (error) {
+      console.error("Error deleting notification:", error);
     }
   };
 
@@ -141,12 +153,24 @@ export default function Notifications() {
   };
 
   const handleNotificationPress = (notification) => {
-  markAsRead(notification.id);
-  if (notification.pollId) {
-    router.push(`/pages/PollDetail?id=${notification.pollId}`);
-  }
-};
+    markAsRead(notification.id);
+    if (notification.pollId) {
+      router.push(`/pages/PollDetail?id=${notification.pollId}`);
+    }
+  };
 
+  const openMenu = (notification) => {
+    setSelectedNotification(notification);
+    setMenuVisible(true);
+  };
+
+  const closeMenu = () => {
+    setMenuVisible(false);
+  };
+
+  // Separate read and unread notifications
+  const unreadNotifications = notifications.filter(notification => !notification.read);
+  const readNotifications = notifications.filter(notification => notification.read);
 
   if (loading) {
     return (
@@ -159,6 +183,9 @@ export default function Notifications() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <AntDesign name="arrowleft" size={24} color={colors.DARK} />
+        </TouchableOpacity>
         <Text style={styles.headerText}>Notifications</Text>
         {notifications.length > 0 && (
           <TouchableOpacity onPress={markAllAsRead}>
@@ -174,38 +201,79 @@ export default function Notifications() {
         </View>
       ) : (
         <FlatList
-          data={notifications}
-          keyExtractor={(item) => item.id}
+          data={[
+            { title: "New", data: unreadNotifications },
+            { title: "Earlier", data: readNotifications },
+          ]}
+          keyExtractor={(item, index) => index.toString()}
           refreshing={refreshing}
           onRefresh={onRefresh}
           renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[
-                styles.notificationItem,
-                !item.read && styles.unreadNotification,
-              ]}
-              onPress={() => handleNotificationPress(item)}
-            >
-              <View style={styles.notificationIcon}>
-                <AntDesign
-                  name={getNotificationIcon(item.type)}
-                  size={24}
-                  color={colors.DARK}
-                />
-              </View>
-              <View style={styles.notificationContent}>
-                <Text style={styles.notificationText}>
-                  {getNotificationMessage(item)}
-                </Text>
-                <Text style={styles.notificationTime}>
-                  {formatTime(item.timestamp)}
-                </Text>
-              </View>
-              {!item.read && <View style={styles.unreadIndicator} />}
-            </TouchableOpacity>
+            <>
+              {item.data.length > 0 && (
+                <>
+                  <Text style={styles.sectionHeader}>{item.title}</Text>
+                  {item.data.map((notification) => (
+                    <TouchableOpacity
+                      key={notification.id}
+                      style={[
+                        styles.notificationItem,
+                        !notification.read && styles.unreadNotification,
+                      ]}
+                      onPress={() => handleNotificationPress(notification)}
+                    >
+                      <View style={styles.notificationIcon}>
+                        <AntDesign
+                          name={getNotificationIcon(notification.type)}
+                          size={24}
+                          color={colors.DARK}
+                        />
+                      </View>
+                      <View style={styles.notificationContent}>
+                        <Text style={styles.notificationText}>
+                          {getNotificationMessage(notification)}
+                        </Text>
+                        <Text style={styles.notificationTime}>
+                          {formatTime(notification.timestamp)}
+                        </Text>
+                      </View>
+                      {!notification.read && <View style={styles.unreadIndicator} />}
+                      <TouchableOpacity 
+                        style={styles.menuButton}
+                        onPress={() => openMenu(notification)}
+                      >
+                        <Entypo name="dots-three-vertical" size={16} color={colors.GRAY} />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+            </>
           )}
         />
       )}
+
+      {/* Kebab Menu Modal */}
+      <Modal
+        transparent={true}
+        visible={menuVisible}
+        onRequestClose={closeMenu}
+      >
+        <Pressable style={styles.modalOverlay} onPress={closeMenu}>
+          <View style={styles.menuContainer}>
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={() => {
+                deleteNotification(selectedNotification?.id);
+                closeMenu();
+              }}
+            >
+              <MaterialIcons name="delete" size={20} color={colors.RED} />
+              <Text style={[styles.menuText, { color: colors.RED }]}>Delete</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -220,16 +288,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: 15,
-    paddingHorizontal: 20,
+    paddingHorizontal: 15,
     backgroundColor: "white",
     borderBottomWidth: 1,
     borderBottomColor: colors.LIGHTGRAY,
     elevation: 2,
   },
+  backButton: {
+    paddingRight: 10,
+  },
   headerText: {
     fontSize: 20,
     fontWeight: "bold",
     color: colors.DARK,
+    flex: 1,
+    marginLeft: 10,
   },
   markAllText: {
     color: colors.BLUE,
@@ -260,9 +333,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 5,
     elevation: 2,
+    position: 'relative',
   },
   unreadNotification: {
-    backgroundColor: "#e8f0fe", // light blue background
+    backgroundColor: "#e8f0fe",
   },
   notificationIcon: {
     marginRight: 15,
@@ -287,5 +361,43 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: colors.BLUE,
     marginLeft: 10,
+  },
+  sectionHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    color: colors.GRAY,
+    fontSize: 14,
+    fontWeight: '500',
+    backgroundColor: colors.LIGHT,
+  },
+  menuButton: {
+    padding: 5,
+    marginLeft: 5,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  menuContainer: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 10,
+    width: 150,
+    position: 'absolute',
+    right: 20,
+    top: 100,
+    elevation: 5,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+  },
+  menuText: {
+    marginLeft: 10,
+    fontSize: 16,
   },
 });
