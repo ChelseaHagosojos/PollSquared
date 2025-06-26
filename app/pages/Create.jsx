@@ -17,6 +17,8 @@ export default function Create() {
   const [booleanType, setBooleanType] = useState('yesno'); // 'yesno' or 'truefalse'
   const [isLoading, setIsLoading] = useState(false);
   const [duration, setDuration] = useState({ value: '', unit: 'hours' });
+const [selectedTheme, setSelectedTheme] = useState(null); // null means default
+
   const totalSteps = 4;
 
   const nextStep = () => {
@@ -123,6 +125,7 @@ export default function Create() {
         status: 'active',
         createdBy: user.uid,
         creatorName: username,
+        theme: selectedTheme,
       };
 
       await addDoc(collection(db, 'polls'), pollData);
@@ -304,20 +307,164 @@ export default function Create() {
       case 4:
         return (
           <View style={styles.inputContainer}>
-            <Text style={styles.reviewTitle}>Review</Text>
-            <View style={styles.pollContainer}>
+            <Text style={styles.label}>Poll Theme:</Text>
+<View style={styles.colorPickerContainer}>
+        <View style={styles.colorPickerRow}>
+          {/* Default (no theme) */}
+          <TouchableOpacity 
+            onPress={() => setSelectedTheme(null)}
+            style={[
+              styles.colorOption,
+              selectedTheme === null && styles.selectedColorOption,
+              { 
+                backgroundColor: 'white',
+                borderColor: colors.BLUE,
+                borderWidth: 3
+              }
+            ]}
+          />
+          
+          {/* Red theme */}
+          <TouchableOpacity 
+            onPress={() => setSelectedTheme('red')}
+            style={[
+              styles.colorOption,
+              selectedTheme === 'red' && styles.selectedColorOption,
+              { 
+                backgroundColor: colors.REDBG,
+                borderColor: colors.REDMAIN,
+                borderWidth: 3
+              }
+            ]}
+          />
+          
+          {/* Orange theme */}
+          <TouchableOpacity 
+            onPress={() => setSelectedTheme('orange')}
+            style={[
+              styles.colorOption,
+              selectedTheme === 'orange' && styles.selectedColorOption,
+              { 
+                backgroundColor: colors.ORGBG,
+                borderColor: colors.ORGMAIN,
+                borderWidth: 3
+              }
+            ]}
+          />
+          
+          {/* Yellow theme */}
+          <TouchableOpacity 
+            onPress={() => setSelectedTheme('yellow')}
+            style={[
+              styles.colorOption,
+              selectedTheme === 'yellow' && styles.selectedColorOption,
+              { 
+                backgroundColor: colors.YELBG,
+                borderColor: colors.YELMAIN,
+                borderWidth: 3
+              }
+            ]}
+          />
+        </View>
+        
+        <View style={styles.colorPickerRow}>
+          {/* Green theme */}
+          <TouchableOpacity 
+            onPress={() => setSelectedTheme('green')}
+            style={[
+              styles.colorOption,
+              selectedTheme === 'green' && styles.selectedColorOption,
+              { 
+                backgroundColor: colors.GRBG,
+                borderColor: colors.GRMAIN,
+                borderWidth: 3
+              }
+            ]}
+          />
+          
+          {/* Blue theme */}
+          <TouchableOpacity 
+            onPress={() => setSelectedTheme('blue')}
+            style={[
+              styles.colorOption,
+              selectedTheme === 'blue' && styles.selectedColorOption,
+              { 
+                backgroundColor: colors.BLBG,
+                borderColor: colors.BLMAIN,
+                borderWidth: 3
+              }
+            ]}
+          />
+          
+          {/* Violet theme */}
+          <TouchableOpacity 
+            onPress={() => setSelectedTheme('violet')}
+            style={[
+              styles.colorOption,
+              selectedTheme === 'violet' && styles.selectedColorOption,
+              { 
+                backgroundColor: colors.VIOBG,
+                borderColor: colors.VIOMAIN,
+                borderWidth: 3
+              }
+            ]}
+          />
+          
+          {/* Pink theme */}
+          <TouchableOpacity 
+            onPress={() => setSelectedTheme('pink')}
+            style={[
+              styles.colorOption,
+              selectedTheme === 'pink' && styles.selectedColorOption,
+              { 
+                backgroundColor: colors.PINKBG,
+                borderColor: colors.PINKMAIN,
+                borderWidth: 3
+              }
+            ]}
+          />
+        </View>
+      </View>
+            <View style={[
+                styles.pollContainer,
+                selectedTheme === 'red' && { backgroundColor: colors.REDBG},
+                selectedTheme === 'orange' && { backgroundColor: colors.ORGBG},
+                selectedTheme === 'yellow' && { backgroundColor: colors.YELBG},
+                selectedTheme === 'green' && { backgroundColor: colors.GRBG},
+                selectedTheme === 'blue' && { backgroundColor: colors.BLBG},
+                selectedTheme === 'violet' && { backgroundColor: colors.VIOBG},
+                selectedTheme === 'pink' && { backgroundColor: colors.PINKBG},
+                ]}>
               <View style={styles.pollHeader}>
                 <View style={styles.creatorContainer}>
                   <Image source={require('./../../assets/images/default.png')} style={styles.profilePic} />
                   <Text style={styles.creatorName}>You</Text>
                 </View>
-                <View style={styles.voteCountContainer}>
+                <View style={[
+                styles.voteCountContainer,
+                selectedTheme === 'red' && { backgroundColor: colors.REDMAIN},
+                selectedTheme === 'orange' && { backgroundColor: colors.ORGMAIN},
+                selectedTheme === 'yellow' && { backgroundColor: colors.YELMAIN},
+                selectedTheme === 'green' && { backgroundColor: colors.GRMAIN},
+                selectedTheme === 'blue' && { backgroundColor: colors.BLMAIN },
+                selectedTheme === 'violet' && { backgroundColor: colors.VIOMAIN},
+                selectedTheme === 'pink' && { backgroundColor: colors.PINKMAIN},
+                ]}>
                   <Text style={styles.voteCountText}>0 Votes</Text>
                 </View>
               </View>
               <Text style={styles.pollTitle}>{pollTitle}</Text>
               {pollDescription ? <Text style={styles.pollDescription}>{pollDescription}</Text> : null}
-              <Text style={styles.pollDuration}>
+              <Text style={[
+                styles.pollDuration,
+                selectedTheme === 'red' && { color: colors.REDMAIN},
+                selectedTheme === 'orange' && { color: colors.ORGMAIN},
+                selectedTheme === 'yellow' && { color: colors.YELMAIN},
+                selectedTheme === 'green' && { color: colors.GRMAIN},
+                selectedTheme === 'blue' && { color: colors.BLMAIN },
+                selectedTheme === 'violet' && { color: colors.VIOMAIN},
+                selectedTheme === 'pink' && { color: colors.PINKMAIN},
+                ]}>
                 Ends in: {duration.value} {duration.unit}
               </Text>
               <View style={styles.optionList}>
@@ -710,5 +857,51 @@ nextbuttonText: {
   fontSize: 16,
   fontWeight: '500',
 },
-
+colorPickerContainer: {
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginBottom: 20,
+},
+colorPickerRow: {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  marginBottom: 10,
+},
+colorOption: {
+  width: 40,
+  height: 40,
+  borderRadius: 20,
+  marginHorizontal: 8,
+  borderWidth: 1,
+},
+selectedColorOption: {
+  borderWidth: 3,
+  transform: [{ scale: 1.1 }],
+},
+colorPickerContainer: {
+  flexDirection: 'row',
+  marginBottom: 20,
+  paddingVertical: 10,
+},
+colorOption: {
+  width: 35,
+  height: 35,
+  borderRadius: 20,
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginRight: 10,
+},
+selectedColorOption: {
+  borderWidth: 2,
+  borderColor: colors.DARK,
+},
+colorText: {
+  fontSize: 12,
+  color: colors.DARK,
+},
+selectedColorText: {
+  fontSize: 12,
+  fontWeight: 'bold',
+  color: colors.DARK,
+},
 };
