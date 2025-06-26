@@ -33,7 +33,8 @@ import { Dropdown } from "react-native-element-dropdown";
 import { AntDesign } from "@expo/vector-icons";
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-
+import { registerScrollToTop } from '../../utils/scrollManager';
+import { useRef } from "react";
 export default function HomeScreen() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -53,11 +54,17 @@ export default function HomeScreen() {
   const [searchVisible, setSearchVisible] = useState(false);
   const [filter, setFilter] = useState("ongoing");
   const [sort, setSort] = useState("newest");
-const [searchType, setSearchType] = useState("polls"); // 'polls' or 'users'
-
+  const [searchType, setSearchType] = useState("polls"); // 'polls' or 'users'
+  const flatListRef = useRef(null);
   const COMMENTS_PER_PAGE = 5;
 
-  // Filter and sort options
+React.useEffect(() => {
+    registerScrollToTop(() => {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    });
+    return () => registerScrollToTop(null);
+  }, []);
+  
   const filterOptions = [
     { label: "All Polls", value: "all" },
     { label: "Ongoing", value: "ongoing" },
@@ -783,6 +790,7 @@ const submitComment = async () => {
         {/* Combined Polls Section */}
         {filteredPolls.length > 0 ? (
           <FlatList
+          ref={flatListRef}
             data={filteredPolls}
             keyExtractor={(item) => item.id}
             extraData={refresh} // Force FlatList to re-render
