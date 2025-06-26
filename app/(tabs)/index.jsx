@@ -31,6 +31,7 @@ import {
 import colors from "../../constant/colors";
 import { Dropdown } from "react-native-element-dropdown";
 import { AntDesign } from "@expo/vector-icons";
+import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -48,6 +49,7 @@ export default function HomeScreen() {
   const [newComment, setNewComment] = useState("");
   const [commentPage, setCommentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchVisible, setSearchVisible] = useState(false);
   const [filter, setFilter] = useState("ongoing");
   const [sort, setSort] = useState("newest");
 
@@ -83,7 +85,7 @@ export default function HomeScreen() {
       ? currentArray.filter((uid) => uid !== user.uid)
       : [...currentArray, user.uid];
     const updatedOpposite = oppositeArray.filter((uid) => uid !== user.uid);
-
+    
     await updateDoc(pollRef, {
       [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
       [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
@@ -229,18 +231,26 @@ const submitComment = async () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (!currentUser) {
-        console.log("No user detected, redirecting...");
-        router.replace("/login");
-        return;
-      }
+  if (!currentUser) {
+    console.log("No user detected, redirecting...");
+    router.replace("/login");
+    return;
+  }
 
-      setUser(currentUser);
-      setLoading(true);
+  setUser(currentUser);
+  setLoading(true);
 
-      try {
-        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-        if (userDoc.exists()) setUsername(userDoc.data().username);
+  try {
+    // Fetch user data from Firestore
+    const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+    if (userDoc.exists()) {
+      setUsername(userDoc.data().username);
+      // Add profilePic to user state
+      setUser(prev => ({
+        ...prev,
+        profilePic: userDoc.data().profilePic
+      }));
+    }
 
         const querySnapshot = await getDocs(
           query(
@@ -594,40 +604,110 @@ const submitComment = async () => {
     );
   }
 
+
   const filteredPolls = getFilteredAndSortedPolls();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.DARK }}>
       <View style={{ backgroundColor: colors.LIGHT }}>
-        <View
+<View
+  style={{
+    backgroundColor: colors.DARK,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 20, // Added proper bottom padding
+    borderBottomRightRadius: 25,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  }}
+>
+  {/* Logo on the left */}
+  <Image
+    style={{
+      width: 45,
+      height: 45,
+      borderRadius: 5,
+    }}
+    source={require("./../../assets/images/logo3.jpg")}
+  />
+
+  {/* Search bar in the middle */}
+  <View style={{ flex: 1, marginHorizontal: 15}}>
+    {searchVisible ? (
+      <View style={{ 
+        flexDirection: 'row', 
+        alignItems: 'center',
+        backgroundColor: 'white',
+        borderRadius: 100,
+        paddingHorizontal: 5,
+        paddingVertical: 5,
+      }}>
+        <TextInput
           style={{
-            backgroundColor: colors.DARK,
-            paddingVertical: 20,
-            padding: 20,
-            paddingBottom: 0,
-            borderBottomRightRadius: 25,
+            flex: 1,
+            color: 'black',
+            paddingVertical: 8,
+            paddingHorizontal: 10,
           }}
+          placeholder="Search polls..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholderTextColor={colors.GRAY}
+          autoFocus
+        />
+        <TouchableOpacity
+          onPress={() => {
+            setSearchVisible(false);
+            setSearchQuery('');
+          }}
+          style={{ marginLeft: 8 }}
         >
-          <Image
-            style={{
-              width: 45,
-              height: 45,
-              borderRadius: 5,
-              alignSelf: "flex-end",
-            }}
-            source={require("./../../assets/images/logo3.jpg")}
-          />
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search polls..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholderTextColor={colors.GRAY}
-            />
-          </View>
-        </View>
+          <Ionicons name="close" size={22} color={colors.DARK} />
+        </TouchableOpacity>
       </View>
+    ) : null}
+  </View>
+
+  {/* Right side icons */}
+  <View style={{ 
+    flexDirection: 'row', 
+    alignItems: 'center',
+    minWidth: 80, // Ensures consistent spacing
+    justifyContent: 'flex-end'
+  }}>
+    {/* Search Icon */}
+    {!searchVisible && (
+      <TouchableOpacity 
+        onPress={() => setSearchVisible(true)} 
+        style={{ padding: 8 }}
+      >
+        <Ionicons name="search" size={24} color="white" />
+      </TouchableOpacity>
+    )}
+
+    {/* Notification button */}
+    <TouchableOpacity style={{ padding: 8 }}>
+      <Ionicons name="notifications-outline" size={24} color="white" />
+    </TouchableOpacity>
+
+<TouchableOpacity style={{ marginLeft: 8 }}>
+  <Image
+    style={{
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+    }}
+    source={
+      user?.profilePic
+        ? { uri: user.profilePic }
+        : require('./../../assets/images/default.png')
+    }
+  />
+</TouchableOpacity>
+  </View>
+</View>
+</View>
       <View
         style={{
           backgroundColor: colors.LIGHT,
@@ -971,7 +1051,52 @@ const PollItem = ({
   openPollModal,
 }) => {
   const isLoading = loadingStates[item.id] || false;
+const formatDateLabel = (date) => {
+  if (!date) return 'Unknown date';
+  
+  // Handle Firebase Timestamp, JavaScript Date, or ISO string
+  const postDate = typeof date.toDate === 'function' 
+    ? date.toDate() 
+    : new Date(date);
+  
+  if (isNaN(postDate.getTime())) return 'Invalid date';
 
+  const now = new Date();
+  const diffInSeconds = Math.floor((now - postDate) / 1000);
+  
+  // Format time as 1:00 PM (12-hour format)
+  const formatTime = (date) => {
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }).replace(/^0/, ''); // Remove leading zero for hours
+  };
+
+  // For today's posts
+  if (postDate.toDateString() === now.toDateString()) {
+    if (diffInSeconds < 60) return `Just now (${formatTime(postDate)})`;
+    
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago (${formatTime(postDate)})`;
+    
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    return `${diffInHours}h ago (${formatTime(postDate)})`;
+  }
+
+  // For yesterday's posts
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (postDate.toDateString() === yesterday.toDateString()) {
+    return `Yesterday at ${formatTime(postDate)}`;
+  }
+
+  // For older posts
+  return postDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }) + ` at ${formatTime(postDate)}`;
+};
   return (
     <View
       style={{
@@ -997,21 +1122,36 @@ const PollItem = ({
           marginBottom: 10,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Image
-            source={
-              item.creatorProfilePic
-                ? { uri: item.creatorProfilePic }
-                : require("./../../assets/images/default.png")
-            }
-            style={{ width: 35, height: 35, borderRadius: 20, marginRight: 10 }}
-          />
-          <Text
-            style={{ fontSize: 14, fontWeight: "bold", color: colors.GRAY }}
-          >
-            {item.creatorName}
-          </Text>
-        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+  <Image
+    source={
+      item.creatorProfilePic
+        ? { uri: item.creatorProfilePic }
+        : require('./../../assets/images/default.png')
+    }
+    style={{
+      width: 35,
+      height: 35,
+      borderRadius: 20,
+      marginRight: 10,
+    }}
+  />
+  <View>
+    <Text
+      style={{
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: colors.GRAY,
+      }}
+    >
+      {item.creatorName}
+    </Text>
+    <Text style={{ fontSize: 12, color: colors.GRAY, marginTop: 2 }}>
+  {formatDateLabel(item.createdAt)}
+</Text>
+
+  </View>
+</View>
         <View
           style={{
             backgroundColor: colors.BLUE,
@@ -1177,7 +1317,52 @@ const PollItem = ({
 const PollResultItem = ({ item, handleReaction, openPollModal }) => {
   const totalVotes = item.totalVotes || 0;
   const maxVotes = Math.max(...item.options.map((option) => option.votes || 0));
+const formatDateLabel = (date) => {
+  if (!date) return 'Unknown date';
+  
+  // Handle Firebase Timestamp, JavaScript Date, or ISO string
+  const postDate = typeof date.toDate === 'function' 
+    ? date.toDate() 
+    : new Date(date);
+  
+  if (isNaN(postDate.getTime())) return 'Invalid date';
 
+  const now = new Date();
+  const diffInSeconds = Math.floor((now - postDate) / 1000);
+  
+  // Format time as 1:00 PM (12-hour format)
+  const formatTime = (date) => {
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }).replace(/^0/, ''); // Remove leading zero for hours
+  };
+
+  // For today's posts
+  if (postDate.toDateString() === now.toDateString()) {
+    if (diffInSeconds < 60) return `Just now (${formatTime(postDate)})`;
+    
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago (${formatTime(postDate)})`;
+    
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    return `${diffInHours}h ago (${formatTime(postDate)})`;
+  }
+
+  // For yesterday's posts
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (postDate.toDateString() === yesterday.toDateString()) {
+    return `Yesterday at ${formatTime(postDate)}`;
+  }
+
+  // For older posts
+  return postDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }) + ` at ${formatTime(postDate)}`;
+};
   return (
     <View
       style={{
@@ -1212,11 +1397,21 @@ const PollResultItem = ({ item, handleReaction, openPollModal }) => {
             }
             style={{ width: 35, height: 35, borderRadius: 20, marginRight: 10 }}
           />
-          <Text
-            style={{ fontSize: 14, fontWeight: "bold", color: colors.GRAY }}
-          >
-            {item.creatorName}
-          </Text>
+  <View>
+    <Text
+      style={{
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: colors.GRAY,
+      }}
+    >
+      {item.creatorName}
+    </Text>
+    <Text style={{ fontSize: 12, color: colors.GRAY, marginTop: 2 }}>
+  {formatDateLabel(item.createdAt)}
+</Text>
+
+  </View>
         </View>
         <View
           style={{
@@ -1333,12 +1528,6 @@ const styles = StyleSheet.create({
   reactionsContainer: { flexDirection: "row", gap: 12, marginTop: 10 },
   reactionText: { fontSize: 14, color: colors.DARK },
   commentText: { fontSize: 14, color: colors.BLUE },
-  searchInput: {
-    height: 50,
-    paddingHorizontal: 15,
-    fontSize: 16,
-    color: colors.DARK,
-  },
   searchContainer: {
     marginVertical: 20,
     borderRadius: 100,
@@ -1346,6 +1535,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.LIGHT,
     elevation: 2,
     shadowColor: "gray",
+    flex: 1,
+    marginHorizontal: 15,
   },
   filterSortRow: {
     flexDirection: "row",
