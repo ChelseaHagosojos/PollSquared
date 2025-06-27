@@ -77,6 +77,29 @@ const onRefresh = async () => {
   }
 };
 
+const handleFilterChange = (value) => {
+  setFilter(value);
+  // Scroll to top after a short delay to allow state update
+  setTimeout(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, 100);
+};
+const handleSortChange = (value) => {
+  setSort(value);
+  setTimeout(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, 100);
+};
+const handleSearch = (text) => {
+  setSearchQuery(text);
+  setTimeout(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, 100);
+};
+
+
+
+
 React.useEffect(() => {
     registerScrollToTop(() => {
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -581,18 +604,18 @@ React.useEffect(() => {
         paddingVertical: 5,
       }}>
         <TextInput
-          style={{
-            flex: 1,
-            color: 'black',
-            paddingVertical: 8,
-            paddingHorizontal: 10,
-          }}
-          placeholder="Search polls..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholderTextColor={colors.GRAY}
-          autoFocus
-        />
+  style={{
+    flex: 1,
+    color: 'black',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  }}
+  placeholder="Search polls..."
+  value={searchQuery}
+  onChangeText={handleSearch} // Use the new handler
+  placeholderTextColor={colors.GRAY}
+  autoFocus
+/>
         <TouchableOpacity
           onPress={() => {
             setSearchVisible(false);
@@ -664,6 +687,7 @@ React.useEffect(() => {
           <View style={styles.dropdownContainer}>
             <Dropdown
               style={styles.dropdown}
+              onChange={(item) => handleFilterChange(item.value)}
               placeholderStyle={styles.dropdownPlaceholder}
               selectedTextStyle={styles.dropdownSelectedText}
               inputSearchStyle={styles.dropdownInputSearch}
@@ -691,6 +715,7 @@ React.useEffect(() => {
           <View style={styles.dropdownContainer}>
             <Dropdown
               style={styles.dropdown}
+              onChange={(item) => handleSortChange(item.value)}
               placeholderStyle={styles.dropdownPlaceholder}
               selectedTextStyle={styles.dropdownSelectedText}
               inputSearchStyle={styles.dropdownInputSearch}
@@ -719,9 +744,10 @@ React.useEffect(() => {
         {filteredPolls.length > 0 ? (
           <FlatList
           ref={flatListRef}
+          key={`${filter}-${sort}`}
             data={filteredPolls}
             keyExtractor={(item) => item.id}
-            extraData={refresh} // Force FlatList to re-render
+            extraData={[filter, sort, searchQuery, refresh]}
             refreshControl={
     <RefreshControl
       refreshing={refreshing}
