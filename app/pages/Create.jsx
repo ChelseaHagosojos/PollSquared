@@ -7,8 +7,7 @@ import { Picker } from '@react-native-picker/picker';
 import { auth, db, storage } from '../../firebase/firebaseConfig';
 import colors from '../../constant/colors';
 import * as ImagePicker from 'expo-image-picker';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-
+import DatePicker from 'react-native-date-picker';
 export default function Create() {
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -18,8 +17,15 @@ export default function Create() {
   const [options, setOptions] = useState(['', '']);
   const [booleanType, setBooleanType] = useState('yesno'); // 'yesno' or 'truefalse'
   const [isLoading, setIsLoading] = useState(false);
-  const [duration, setDuration] = useState({ value: '', unit: 'hours' });
 const [selectedTheme, setSelectedTheme] = useState(null); // null means default
+const [datePickerOpen, setDatePickerOpen] = useState(false);
+const [duration, setDuration] = useState({ 
+  value: '', 
+  unit: 'hours',
+  schedule: false, // Add this for scheduling
+  scheduledTime: null, // Add this for the scheduled time
+  showPreview: false // Add this for preview visibility
+});
 const [image, setImage] = useState(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const totalSteps = 4;
@@ -132,7 +138,19 @@ const handleImagePick = async () => {
         setIsLoading(false);
         return;
       }
+    // Validate scheduled polls
+    if (duration.schedule && !duration.scheduledTime) {
+      Alert.alert('Error', 'Please select a scheduled time for your poll.');
+      setIsLoading(false);
+      return;
+    }
 
+    // Validate duration
+    if (!duration.value || isNaN(duration.value)) {
+      Alert.alert('Error', 'Please enter a valid poll duration.');
+      setIsLoading(false);
+      return;
+    }
       let formattedOptions;
       if (pollType === 'boolean') {
         if (booleanType === 'yesno') {
@@ -163,21 +181,60 @@ const handleImagePick = async () => {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       const username = userDoc.exists() ? userDoc.data().username : 'Unknown User';
 
-      const pollData = {
-        title: pollTitle,
-        description: pollDescription,
-        type: pollType,
-        booleanType: pollType === 'boolean' ? booleanType : null,
-        options: formattedOptions,
-        duration: { value: duration.value, unit: duration.unit },
-        createdAt: serverTimestamp(),
-        totalVotes: 0,
-        status: 'active',
-        createdBy: user.uid,
-        creatorName: username,
-        theme: selectedTheme,
-        imageBase64: image || null
-      };
+    let startTime, endTime;
+    if (duration.schedule) {
+      // For scheduled polls, start time is the scheduled time
+      startTime = duration.scheduledTime;
+      // Calculate end time based on duration
+      const durationValue = parseInt(duration.value);
+      const durationUnit = duration.unit;
+      
+      endTime = new Date(startTime);
+      if (durationUnit === 'minutes') {
+        endTime.setMinutes(endTime.getMinutes() + durationValue);
+      } else if (durationUnit === 'hours') {
+        endTime.setHours(endTime.getHours() + durationValue);
+      } else if (durationUnit === 'days') {
+        endTime.setDate(endTime.getDate() + durationValue);
+      }
+    } else {
+      // For immediate polls, start time is now
+      startTime = new Date();
+      const durationValue = parseInt(duration.value);
+      const durationUnit = duration.unit;
+      
+      endTime = new Date();
+      if (durationUnit === 'minutes') {
+        endTime.setMinutes(endTime.getMinutes() + durationValue);
+      } else if (durationUnit === 'hours') {
+        endTime.setHours(endTime.getHours() + durationValue);
+      } else if (durationUnit === 'days') {
+        endTime.setDate(endTime.getDate() + durationValue);
+      }
+    }
+    const pollData = {
+      title: pollTitle,
+      description: pollDescription,
+      type: pollType,
+      booleanType: pollType === 'boolean' ? booleanType : null,
+      options: formattedOptions,
+      duration: { 
+        value: duration.value, 
+        unit: duration.unit 
+      },
+      startTime: startTime,
+      endTime: endTime,
+      createdAt: serverTimestamp(),
+      totalVotes: 0,
+      status: duration.schedule ? 'scheduled' : 'active',
+      createdBy: user.uid,
+      creatorName: username,
+      theme: selectedTheme,
+      imageBase64: image || null,
+      isScheduled: duration.schedule || false,
+      showPreview: duration.showPreview || false,
+      visibility: duration.schedule ? (duration.showPreview ? 'preview' : 'hidden') : 'visible'
+    };
       const pollDataSize = JSON.stringify(pollData).length;
     if (pollDataSize > 900000) {  // ~900KB to be safe
       Alert.alert('Error', 'Poll data is too large. Please reduce image size or remove it.');
@@ -362,30 +419,111 @@ case 1:
           </View>
         );
 
-      case 3:
-        return (
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Poll Duration:</Text>
-            <View style={styles.durationContainer}>
-              <TextInput
-                style={styles.durationInput}
-                placeholder="Enter duration"
-                keyboardType="numeric"
-                value={duration.value}
-                onChangeText={(text) => setDuration((prev) => ({ ...prev, value: text }))}
-              />
-              <Picker
-                style={styles.durationPicker}
-                selectedValue={duration.unit}
-                onValueChange={(itemValue) => setDuration((prev) => ({ ...prev, unit: itemValue }))}
-              >
-                <Picker.Item label="Minutes" value="minutes" />
-                <Picker.Item label="Hours" value="hours" />
-                <Picker.Item label="Days" value="days" />
-              </Picker>
-            </View>
+case 3:
+  return (
+    <View style={styles.inputContainer}>
+      <Text style={styles.label}>Poll Duration:</Text>
+      <View style={styles.durationContainer}>
+        <TextInput
+          style={styles.durationInput}
+          placeholder="Enter duration"
+          keyboardType="numeric"
+          value={duration.value}
+          onChangeText={(text) => setDuration((prev) => ({ ...prev, value: text }))}
+        />
+        <Picker
+          style={styles.durationPicker}
+          selectedValue={duration.unit}
+          onValueChange={(itemValue) => setDuration((prev) => ({ ...prev, unit: itemValue }))}
+        >
+          <Picker.Item label="Minutes" value="minutes" />
+          <Picker.Item label="Hours" value="hours" />
+          <Picker.Item label="Days" value="days" />
+        </Picker>
+      </View>
+
+      {/* Add toggle for scheduling */}
+      <View style={styles.scheduleToggleContainer}>
+        <Text style={styles.scheduleLabel}>Schedule for later:</Text>
+        <TouchableOpacity 
+          onPress={() => setDuration(prev => ({ 
+            ...prev, 
+            schedule: !prev.schedule 
+          }))}
+          style={[
+            styles.scheduleToggleButton,
+            duration.schedule && styles.scheduleToggleButtonActive
+          ]}
+        >
+          <Text style={[
+            styles.scheduleToggleText,
+            duration.schedule && styles.scheduleToggleTextActive
+          ]}>
+            {duration.schedule ? 'ON' : 'OFF'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {duration.schedule && (
+        <>
+          {/* Show date/time picker for scheduled polls */}
+          <View style={styles.scheduleContainer}>
+            <Text style={styles.label}>Schedule Date & Time:</Text>
+<TouchableOpacity 
+  onPress={() => setDatePickerOpen(true)}
+  style={styles.datePickerButton}
+>
+  <Text style={styles.datePickerText}>
+    {duration.scheduledTime 
+      ? duration.scheduledTime.toLocaleString() 
+      : 'Select date and time'}
+  </Text>
+  <Ionicons name="calendar" size={20} color={colors.BLUE} />
+</TouchableOpacity>
+
+<DatePicker
+  modal
+  open={datePickerOpen}
+  date={duration.scheduledTime || new Date()}
+  minimumDate={new Date()}
+  onConfirm={(date) => {
+    setDatePickerOpen(false);
+    setDuration(prev => ({ 
+      ...prev, 
+      scheduledTime: date 
+    }));
+  }}
+  onCancel={() => {
+    setDatePickerOpen(false);
+  }}
+/>
           </View>
-        );
+
+          {/* Add toggle for preview visibility */}
+          <View style={styles.scheduleToggleContainer}>
+            <Text style={styles.scheduleLabel}>Show preview to users:</Text>
+            <TouchableOpacity 
+              onPress={() => setDuration(prev => ({ 
+                ...prev, 
+                showPreview: !prev.showPreview 
+              }))}
+              style={[
+                styles.scheduleToggleButton,
+                duration.showPreview && styles.scheduleToggleButtonActive
+              ]}
+            >
+              <Text style={[
+                styles.scheduleToggleText,
+                duration.showPreview && styles.scheduleToggleTextActive
+              ]}>
+                {duration.showPreview ? 'ON' : 'OFF'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+    </View>
+  );
 
       case 4:
         return (
@@ -1004,5 +1142,53 @@ removeImageButton: {
   height: 30,
   alignItems: 'center',
   justifyContent: 'center',
+},
+scheduleToggleContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 20,
+},
+scheduleLabel: {
+  fontSize: 16,
+  fontWeight: '600',
+  color: colors.DARK,
+},
+scheduleToggleButton: {
+  width: 60,
+  height: 30,
+  borderRadius: 15,
+  backgroundColor: colors.LIGHT_GRAY,
+  justifyContent: 'center',
+  alignItems: 'center',
+  padding: 2,
+},
+scheduleToggleButtonActive: {
+  backgroundColor: colors.BLUE,
+},
+scheduleToggleText: {
+  color: colors.DARK,
+  fontWeight: 'bold',
+},
+scheduleToggleTextActive: {
+  color: 'white',
+},
+scheduleContainer: {
+  marginBottom: 20,
+},
+datePickerButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  backgroundColor: 'white',
+  borderWidth: 1,
+  borderColor: colors.GRAY,
+  borderRadius: 10,
+  padding: 15,
+  marginBottom: 20,
+},
+datePickerText: {
+  fontSize: 16,
+  color: colors.DARK,
 },
 };
