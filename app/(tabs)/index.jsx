@@ -1215,6 +1215,18 @@ const formatDateLabel = (date) => {
         {item.title}
       </Text>
       <Text style={{ fontSize: 14 }}>{item.description}</Text>
+      {item.imageBase64 && (
+  <Image 
+    source={{ uri: item.imageBase64 }}
+    style={{
+      width: '100%',
+      height: 200,
+      borderRadius: 10,
+      marginTop: 10,
+      resizeMode: 'cover'
+    }}
+  />
+)}
       <Text
         style={{
           fontSize: 14,
@@ -1472,10 +1484,31 @@ const formatDateLabel = (date) => {
     day: 'numeric',
   }) + ` at ${formatTime(postDate)}`;
 };
+  const getThemeColors = () => {
+    switch(item.theme) {
+      case 'red':
+        return { bg: colors.REDBG, main: colors.REDMAIN, sec: colors.REDSEC};
+      case 'orange':
+        return { bg: colors.ORGBG, main: colors.ORGMAIN, sec: colors.ORGSEC };
+      case 'yellow':
+        return { bg: colors.YELBG, main: colors.YELMAIN, sec: colors.YELSEC };
+      case 'green':
+        return { bg: colors.GRBG, main: colors.GRMAIN, sec: colors.GRSEC };
+      case 'blue':
+        return { bg: colors.BLBG, main: colors.BLMAIN, sec: colors.BLSEC };
+      case 'violet':
+        return { bg: colors.VIOBG, main: colors.VIOMAIN, sec: colors.VIOSEC };
+      case 'pink':
+        return { bg: colors.PINKBG, main: colors.PINKMAIN, sec: colors.PINKSEC };
+      default:
+        return { bg: 'white', main: colors.BLUE, sec: 'white' }; // Default theme
+    }
+  };
+  const theme = getThemeColors();
   return (
     <View
       style={{
-        backgroundColor: "white",
+        backgroundColor: theme.bg,
         padding: 20,
         paddingBottom: 30,
         marginBottom: 25,
@@ -1524,7 +1557,7 @@ const formatDateLabel = (date) => {
         </View>
         <View
           style={{
-            backgroundColor: colors.BLUE,
+            backgroundColor: theme.main,
             borderRadius: 20,
             paddingVertical: 5,
             paddingHorizontal: 10,
@@ -1543,7 +1576,19 @@ const formatDateLabel = (date) => {
       <Text style={{ fontSize: 16, marginVertical: 5 }}>
         {item.description}
       </Text>
-      <Text style={{ fontSize: 14, color: "red", marginBottom: 5 }}>
+      {item.imageBase64 && (
+  <Image 
+    source={{ uri: item.imageBase64 }}
+    style={{
+      width: '100%',
+      height: 200,
+      borderRadius: 10,
+      marginTop: 10,
+      resizeMode: 'cover'
+    }}
+  />
+)}
+      <Text style={{ fontSize: 14, color: "red", marginVertical: 5 }}>
         Poll has ended
       </Text>
 
@@ -1562,7 +1607,7 @@ const formatDateLabel = (date) => {
                       styles.progressBar,
                       {
                         width: `${percentage}%`,
-                        backgroundColor: colors.LIGHTBLUE,
+                        backgroundColor: theme.sec,
                       },
                     ]}
                   />
@@ -1601,12 +1646,12 @@ const formatDateLabel = (date) => {
     <AntDesign
       name={item.likes?.includes(user?.uid) ? "like1" : "like2"}
       size={20}
-      color={item.likes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY}
+      color={item.likes?.includes(user?.uid) ? theme.main : colors.LIGHTGRAY}
     />
     <Text style={{
       marginLeft: 5,
       fontSize: 14,
-      color: item.likes?.includes(user?.uid) ? colors.BLUE : colors.LIGHTGRAY
+      color: item.likes?.includes(user?.uid) ? theme.main : colors.LIGHTGRAY
     }}>
       {item.likes?.length || 0}
     </Text>

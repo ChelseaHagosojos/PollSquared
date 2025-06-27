@@ -1,11 +1,13 @@
-import { View, Text, TouchableOpacity, TextInput, ScrollView, Alert, Image } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, ScrollView, Alert, Image, ActivityIndicator } from 'react-native';
 import React, { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { collection, addDoc, serverTimestamp, getDoc, doc } from 'firebase/firestore';
 import { Picker } from '@react-native-picker/picker';
-import { auth, db } from '../../firebase/firebaseConfig';
+import { auth, db, storage } from '../../firebase/firebaseConfig';
 import colors from '../../constant/colors';
+import * as ImagePicker from 'expo-image-picker';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export default function Create() {
   const router = useRouter();
@@ -18,8 +20,56 @@ export default function Create() {
   const [isLoading, setIsLoading] = useState(false);
   const [duration, setDuration] = useState({ value: '', unit: 'hours' });
 const [selectedTheme, setSelectedTheme] = useState(null); // null means default
-
+const [image, setImage] = useState(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const totalSteps = 4;
+
+const handleImagePick = async () => {
+  try {
+    setIsUploadingImage(true);
+    
+    // Request permissions
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow photo library access');
+      return;
+    }
+
+    // Select image with base64 encoding
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,  // Lower quality to reduce size
+      base64: true,  // This is crucial for getting base64 data
+    });
+
+    if (result.canceled || !result.assets?.[0]?.base64) {
+      return;
+    }
+
+    // Create base64 image string
+    const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
+    
+    // Verify the image isn't too large (Firestore document limit is 1MB)
+    if (base64Image.length > 900000) {  // ~900KB to be safe
+      Alert.alert('Image too large', 'Please select a smaller image');
+      return;
+    }
+
+    setImage(base64Image);
+    
+  } catch (error) {
+    console.error('Image upload error:', error);
+    Alert.alert('Error', 'Failed to process image. Please try again.');
+  } finally {
+    setIsUploadingImage(false);
+  }
+};
+
+  const removeImage = () => {
+    setImage(null);
+  };
 
   const nextStep = () => {
     if (step === 1) {
@@ -126,8 +176,13 @@ const [selectedTheme, setSelectedTheme] = useState(null); // null means default
         createdBy: user.uid,
         creatorName: username,
         theme: selectedTheme,
+        imageBase64: image || null
       };
-
+      const pollDataSize = JSON.stringify(pollData).length;
+    if (pollDataSize > 900000) {  // ~900KB to be safe
+      Alert.alert('Error', 'Poll data is too large. Please reduce image size or remove it.');
+      return;
+    }
       await addDoc(collection(db, 'polls'), pollData);
       Alert.alert('Success', 'Your poll has been created successfully!');
       router.push('/');
@@ -141,44 +196,72 @@ const [selectedTheme, setSelectedTheme] = useState(null); // null means default
 
   const renderStepContent = () => {
     switch (step) {
-      case 1:
-        return (
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Poll Title:</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your poll title"
-              value={pollTitle}
-              onChangeText={setPollTitle}
-            />
-            <Text style={styles.label}>Poll Description (Optional):</Text>
-            <TextInput
-              style={[styles.input, styles.multilineInput]}
-              placeholder="Enter a short description (optional)"
-              value={pollDescription}
-              onChangeText={setPollDescription}
-              multiline
-            />
-            <Text style={styles.label}>Poll Type:</Text>
-  <View style={styles.pickerWrapper}>
-    <Picker
-      selectedValue={pollType}
-      onValueChange={(itemValue) => {
-        setPollType(itemValue);
-        if (itemValue === 'rating') setOptions(['']);
-        else if (itemValue === 'multiple') setOptions(['', '']);
-      }}
-      style={styles.picker}
-    >
-      <Picker.Item label="Select Poll Type" value="" />
-      <Picker.Item label="Multiple Choice" value="multiple" />
-      <Picker.Item label="Yes/No or True/False" value="boolean" />
-      <Picker.Item label="Rating Scale" value="rating" />
-      <Picker.Item label="Likert Scale" value="likert" />
-    </Picker>
-  </View>
-          </View>
-        );
+case 1:
+  return (
+    <View style={styles.inputContainer}>
+      <Text style={styles.label}>Poll Title:</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Enter your poll title"
+        value={pollTitle}
+        onChangeText={setPollTitle}
+      />
+      <Text style={styles.label}>Poll Description (Optional):</Text>
+      <TextInput
+        style={[styles.input, styles.multilineInput]}
+        placeholder="Enter a short description (optional)"
+        value={pollDescription}
+        onChangeText={setPollDescription}
+        multiline
+      />
+      
+      {/* Add the image attachment section */}
+      <Text style={styles.label}>Poll Image (Optional):</Text>
+
+{image ? (
+              <View style={styles.imageContainer}>
+                <Image source={{ uri: image }} style={styles.previewImage} />
+                <TouchableOpacity onPress={removeImage} style={styles.removeImageButton}>
+                  <Ionicons name="close" size={20} color="white" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity 
+                onPress={handleImagePick} 
+                style={styles.uploadButton}
+                disabled={isUploadingImage}
+              >
+                {isUploadingImage ? (
+                  <ActivityIndicator color={colors.BLUE} />
+                ) : (
+                  <>
+                    <Ionicons name="image-outline" size={20} color={colors.BLUE} />
+                    <Text style={styles.uploadButtonText}>Attach Image</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+      
+      <Text style={styles.label}>Poll Type:</Text>
+      <View style={styles.pickerWrapper}>
+        <Picker
+          selectedValue={pollType}
+          onValueChange={(itemValue) => {
+            setPollType(itemValue);
+            if (itemValue === 'rating') setOptions(['']);
+            else if (itemValue === 'multiple') setOptions(['', '']);
+          }}
+          style={styles.picker}
+        >
+          <Picker.Item label="Select Poll Type" value="" />
+          <Picker.Item label="Multiple Choice" value="multiple" />
+          <Picker.Item label="Yes/No or True/False" value="boolean" />
+          <Picker.Item label="Rating Scale" value="rating" />
+          <Picker.Item label="Likert Scale" value="likert" />
+        </Picker>
+      </View>
+    </View>
+  );
 
       case 2:
         if (pollType === 'boolean') {
@@ -450,6 +533,13 @@ const [selectedTheme, setSelectedTheme] = useState(null); // null means default
                 </View>
               </View>
               <Text style={styles.pollTitle}>{pollTitle}</Text>
+{image && (
+  <Image 
+    source={{ uri: image }} 
+    style={styles.previewImage} 
+    resizeMode="cover"
+  />
+)}
               {pollDescription ? <Text style={styles.pollDescription}>{pollDescription}</Text> : null}
               <Text style={[
                 styles.pollDuration,
@@ -880,5 +970,39 @@ selectedColorText: {
   fontWeight: 'bold',
   color: colors.DARK,
 },
-
+uploadButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 15,
+  borderWidth: 1,
+  borderColor: colors.BLUE,
+  borderRadius: 10,
+  marginBottom: 20,
+  gap: 10,
+},
+uploadButtonText: {
+  color: colors.BLUE,
+  fontSize: 16,
+},
+imageContainer: {
+  position: 'relative',
+  marginBottom: 20,
+},
+previewImage: {
+  width: '100%',
+  height: 200,
+  borderRadius: 10,
+},
+removeImageButton: {
+  position: 'absolute',
+  top: 10,
+  right: 10,
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  borderRadius: 15,
+  width: 30,
+  height: 30,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
 };
