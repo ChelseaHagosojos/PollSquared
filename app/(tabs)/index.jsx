@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Modal,
   TextInput,
+  RefreshControl,
 } from "react-native";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
@@ -27,6 +28,7 @@ import {
   where,
   orderBy,
   serverTimestamp,
+  onSnapshot,
 } from "firebase/firestore";
 import colors from "../../constant/colors";
 import { Dropdown } from "react-native-element-dropdown";
@@ -57,6 +59,23 @@ export default function HomeScreen() {
   const [searchType, setSearchType] = useState("polls"); // 'polls' or 'users'
   const flatListRef = useRef(null);
   const COMMENTS_PER_PAGE = 5;
+  const [refreshing, setRefreshing] = useState(false);
+
+const onRefresh = async () => {
+  setRefreshing(true);
+  try {
+    // Re-fetch polls data
+    const querySnapshot = await getDocs(
+      query(collection(db, "polls"), where("createdBy", "!=", user.uid))
+    );
+    // Process the data as you did in the useEffect
+    // ...
+  } catch (error) {
+    console.error("Error refreshing:", error);
+  } finally {
+    setRefreshing(false);
+  }
+};
 
 React.useEffect(() => {
     registerScrollToTop(() => {
@@ -239,35 +258,34 @@ const submitComment = async () => {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-  if (!currentUser) {
-    console.log("No user detected, redirecting...");
-    router.replace("/login");
-    return;
-  }
-
-  setUser(currentUser);
-  setLoading(true);
-
-  try {
-    // Fetch user data from Firestore
-    const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-    if (userDoc.exists()) {
-      setUsername(userDoc.data().username);
-      // Add profilePic to user state
-      setUser(prev => ({
-        ...prev,
-        profilePic: userDoc.data().profilePic
-      }));
+  const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+    if (!currentUser) {
+      console.log("No user detected, redirecting...");
+      router.replace("/login");
+      return;
     }
 
-        const querySnapshot = await getDocs(
-          query(
-            collection(db, "polls"),
-            where("createdBy", "!=", currentUser.uid)
-          )
-        );
+    setUser(currentUser);
+    setLoading(true);
 
+    try {
+      // Fetch user data from Firestore
+      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+      if (userDoc.exists()) {
+        setUsername(userDoc.data().username);
+        setUser(prev => ({
+          ...prev,
+          profilePic: userDoc.data().profilePic
+        }));
+      }
+
+      // Set up real-time listener for polls
+      const pollsQuery = query(
+        collection(db, "polls"),
+        where("createdBy", "!=", currentUser.uid)
+      );
+
+      const unsubscribePolls = onSnapshot(pollsQuery, async (querySnapshot) => {
         const fetchedPolls = await Promise.all(
           querySnapshot.docs.map(async (document) => {
             const pollData = document.data();
@@ -275,7 +293,7 @@ const submitComment = async () => {
               (vote) => vote.userId === currentUser.uid
             );
 
-            // Make sure createdAt exists and is a valid timestamp
+            // Handle timestamps
             const createdAt = pollData.createdAt?.toDate
               ? pollData.createdAt.toDate().getTime()
               : pollData.createdAt?.seconds
@@ -296,9 +314,7 @@ const submitComment = async () => {
             const isExpired = remainingTime <= 0;
 
             // Fetch creator's profile picture
-            const creatorDoc = await getDoc(
-              doc(db, "users", pollData.createdBy)
-            );
+            const creatorDoc = await getDoc(doc(db, "users", pollData.createdBy));
             const creatorProfilePic = creatorDoc.exists()
               ? creatorDoc.data().profilePic
               : null;
@@ -308,30 +324,43 @@ const submitComment = async () => {
             const isNowExpired = isExpired;
 
             if (wasActive && isNowExpired) {
-              // Get all voters who aren't the creator
-              const voters = (pollData.votes || [])
-                .map((vote) => vote.userId)
-                .filter((uid) => uid !== pollData.createdBy);
+              try {
+                // Update status in Firestore
+                await updateDoc(doc(db, "polls", document.id), { 
+                  status: "inactive" 
+                });
 
-              // Notify voters
-              await Promise.all(
-                voters.map((voterId) =>
+                // Get all voters who aren't the creator
+                const voters = (pollData.votes || [])
+                  .map((vote) => vote.userId)
+                  .filter((uid) => uid !== pollData.createdBy);
+
+                // Notify voters and creator
+                const notifications = [
+                  ...voters.map((voterId) =>
+                    sendNotification({
+                      recipientId: voterId,
+                      senderId: currentUser.uid,
+                      senderName: username || "Poll System",
+                      pollId: document.id,
+                      pollTitle: pollData.title,
+                      type: "pollEnded",
+                    })
+                  ),
                   sendNotification({
-                    recipientId: voterId,
+                    recipientId: pollData.createdBy,
+                    senderId: currentUser.uid,
+                    senderName: username || "Poll System",
                     pollId: document.id,
                     pollTitle: pollData.title,
                     type: "pollEnded",
                   })
-                )
-              );
+                ];
 
-              // Notify creator
-              await sendNotification({
-                recipientId: pollData.createdBy,
-                pollId: document.id,
-                pollTitle: pollData.title,
-                type: "pollEnded",
-              });
+                await Promise.all(notifications);
+              } catch (error) {
+                console.error("Error handling expired poll:", error);
+              }
             }
 
             return {
@@ -341,26 +370,13 @@ const submitComment = async () => {
               isExpired,
               userVotedOption: userVote ? userVote.option : null,
               creatorProfilePic,
+              creatorName: pollData.creatorName || "Unknown",
               createdAt: pollData.createdAt?.toDate() || new Date(createdAt),
             };
           })
         );
 
-        // Update Firestore for expired polls in batch (optional)
-        const updates = fetchedPolls
-          .filter((poll) => poll.isExpired && poll.status !== "inactive")
-          .map(
-            async (poll) =>
-              await updateDoc(doc(db, "polls", poll.id), { status: "inactive" })
-          );
-
-        await Promise.all(updates); // Batch update
-
-        // Separate active and inactive polls
-        setActivePolls(fetchedPolls.filter((poll) => !poll.isExpired));
-        setInactivePolls(fetchedPolls.filter((poll) => poll.isExpired));
-
-        // Populate selectedOptions with the user's previous votes
+        // Update selectedOptions with user's votes
         const userVotes = {};
         fetchedPolls.forEach((poll) => {
           if (poll.userVotedOption) {
@@ -368,15 +384,22 @@ const submitComment = async () => {
           }
         });
         setSelectedOptions(userVotes);
-      } catch (error) {
-        console.error("Error fetching polls:", error);
-      }
 
+        // Separate active and inactive polls
+        setActivePolls(fetchedPolls.filter((poll) => !poll.isExpired));
+        setInactivePolls(fetchedPolls.filter((poll) => poll.isExpired));
+      });
+
+      return () => unsubscribePolls();
+    } catch (error) {
+      console.error("Error initializing polls:", error);
+    } finally {
       setLoading(false);
-    });
+    }
+  });
 
-    return () => unsubscribe();
-  }, []);
+  return () => unsubscribeAuth();
+}, []);
 
   // Handle vote selection
   const selectOption = (pollId, option) => {
@@ -794,6 +817,14 @@ const submitComment = async () => {
             data={filteredPolls}
             keyExtractor={(item) => item.id}
             extraData={refresh} // Force FlatList to re-render
+            refreshControl={
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      colors={[colors.BLUE]}
+      tintColor={colors.BLUE}
+    />
+  }
             renderItem={({ item }) =>
               item.isExpired ? (
                 <PollResultItem
