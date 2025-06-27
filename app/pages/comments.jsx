@@ -8,6 +8,7 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
+  RefreshControl,
 } from "react-native";
 import React, { useState, useEffect } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -41,7 +42,45 @@ export default function CommentsPage() {
   const [menuVisible, setMenuVisible] = useState(null);
   const [selectedOptions, setSelectedOptions] = useState({});
   const [loadingStates, setLoadingStates] = useState({});
-
+  const [refreshing, setRefreshing] = useState(false);
+const handleRefresh = async () => {
+  setRefreshing(true);
+  try {
+    // Re-fetch the poll data
+    const pollDoc = await getDoc(doc(db, "polls", pollId));
+    if (pollDoc.exists()) {
+      const pollData = pollDoc.data();
+      
+      // Keep the existing poll data and only update what might have changed
+      setPoll(prev => ({
+        ...prev, // Keep all existing data
+        ...pollData, // Update with new data from Firestore
+        id: pollDoc.id,
+        // Preserve these values if they exist in the current state
+        creatorProfilePic: prev?.creatorProfilePic || null,
+        creatorName: prev?.creatorName || "Unknown",
+        userVotedOption: prev?.userVotedOption || null,
+        // Update timestamps if they exist in the new data
+        createdAt: pollData.createdAt?.toDate() || prev?.createdAt || new Date(),
+        // Recalculate expiration status
+        isExpired: (() => {
+          const createdAt = pollData.createdAt?.toDate() || prev?.createdAt || new Date();
+          const durationMs = 
+            pollData.duration?.unit === "days" ? parseInt(pollData.duration.value) * 24 * 60 * 60 * 1000 :
+            pollData.duration?.unit === "hours" ? parseInt(pollData.duration.value) * 60 * 60 * 1000 :
+            pollData.duration?.unit === "minutes" ? parseInt(pollData.duration.value) * 60 * 1000 : 0;
+          const expiresAt = createdAt.getTime() + durationMs;
+          return expiresAt <= Date.now();
+        })()
+      }));
+    }
+  } catch (error) {
+    console.error("Error refreshing:", error);
+    Alert.alert("Error", "Failed to refresh data");
+  } finally {
+    setRefreshing(false);
+  }
+};
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (currentUser) => {
       if (!currentUser) {
@@ -461,7 +500,15 @@ export default function CommentsPage() {
       </View>
 
       {/* Scrollable content */}
-      <ScrollView style={{ flex: 1 }}>
+      <ScrollView style={{ flex: 1 }}
+      refreshControl={
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={handleRefresh}
+      colors={[colors.BLUE]} // Customize as needed
+      tintColor={colors.BLUE} // For iOS
+    />
+  }>
         {/* Poll Preview */}
         <View style={[styles.pollContainer, { backgroundColor: theme.bg }]}>
           <View style={styles.pollHeader}>
