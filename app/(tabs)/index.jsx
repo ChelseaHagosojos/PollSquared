@@ -37,6 +37,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { registerScrollToTop } from '../../utils/scrollManager';
 import { useRef } from "react";
+import { color } from "react-native-elements/dist/helpers";
 export default function HomeScreen() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -47,19 +48,18 @@ export default function HomeScreen() {
   const [selectedOptions, setSelectedOptions] = useState({});
   const [refresh, setRefresh] = useState(false);
   const [loadingStates, setLoadingStates] = useState({});
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedPoll, setSelectedPoll] = useState(null);
-  const [comments, setComments] = useState([]);
-  const [newComment, setNewComment] = useState("");
-  const [commentPage, setCommentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchVisible, setSearchVisible] = useState(false);
   const [filter, setFilter] = useState("ongoing");
   const [sort, setSort] = useState("newest");
   const [searchType, setSearchType] = useState("polls"); // 'polls' or 'users'
   const flatListRef = useRef(null);
-  const COMMENTS_PER_PAGE = 5;
   const [refreshing, setRefreshing] = useState(false);
+
+
+const openPollModal = (poll) => {
+  router.push(`/comments?pollId=${poll.id}`);
+};
 
 const onRefresh = async () => {
   setRefreshing(true);
@@ -155,101 +155,6 @@ React.useEffect(() => {
           : p
       )
     );
-  };
-
-const openPollModal = async (poll) => {
-  setSelectedPoll(poll);
-  setModalVisible(true);
-  setCommentPage(1); // Reset to first page when opening modal
-  setNewComment("");
-  setEditingCommentId(null);
-
-  try {
-    const commentsRef = collection(db, "polls", poll.id, "comments");
-    const q = query(commentsRef, orderBy("timestamp", "desc"));
-    const snapshot = await getDocs(q);
-
-    const fetchedComments = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    setComments(fetchedComments);
-  } catch (error) {
-    console.error("Failed to load comments:", error);
-    alert("Could not load comments.");
-    setComments([]);
-  }
-};
-
-  const [editingCommentId, setEditingCommentId] = useState(null);
-
-const submitComment = async () => {
-  if (!newComment.trim() || !user || !selectedPoll?.id) return;
-
-  const commentsRef = collection(db, "polls", selectedPoll.id, "comments");
-
-  try {
-    const userDoc = await getDoc(doc(db, "users", user.uid));
-    const username = userDoc.exists() ? userDoc.data().username : user.email;
-    const profilePic = userDoc.exists() ? userDoc.data().profilePic : null;
-
-    const commentData = {
-      userId: user.uid,
-      username,
-      text: newComment.trim(),
-      timestamp: serverTimestamp(),
-      profilePic: profilePic || "", 
-    };
-
-    if (editingCommentId) {
-      const commentDocRef = doc(commentsRef, editingCommentId);
-      await updateDoc(commentDocRef, {
-        text: newComment.trim(),
-        timestamp: serverTimestamp(),
-      });
-      setEditingCommentId(null);
-    } else {
-      // REMOVED THE COMMENT LIMIT CHECK
-      await addDoc(commentsRef, commentData);
-
-      if (selectedPoll.createdBy !== user.uid) {
-        await sendNotification({
-          recipientId: selectedPoll.createdBy,
-          senderId: user.uid,
-          senderName: username,
-          pollId: selectedPoll.id,
-          pollTitle: selectedPoll.title,
-          type: "comment",
-          commentText: commentData.text,
-        });
-      }
-    }
-
-    setNewComment("");
-    openPollModal(selectedPoll); // Refresh comments
-  } catch (error) {
-    console.error("Failed to submit comment:", error);
-    alert("Could not post comment.");
-  }
-};
-
-
-  const editComment = (comment) => {
-    setNewComment(comment.text);
-    setEditingCommentId(comment.id);
-  };
-
-  const deleteComment = async (commentId) => {
-    if (!selectedPoll?.id || !commentId) return;
-
-    try {
-      await deleteDoc(doc(db, "polls", selectedPoll.id, "comments", commentId));
-      setComments((prev) => prev.filter((c) => c.id !== commentId));
-    } catch (error) {
-      console.error("Failed to delete comment:", error);
-      alert("Could not delete comment.");
-    }
   };
 
   const formatTime = (timestamp) => {
@@ -830,6 +735,7 @@ const submitComment = async () => {
                 <PollResultItem
                   item={item}
                   user={user}
+                  router={router}
                   userHasVoted={item.userVotedOption !== null}
                   selectedOption={selectedOptions[item.id]}
                   onSelectOption={selectOption}
@@ -837,12 +743,12 @@ const submitComment = async () => {
                   onClearVote={clearVote}
                   loadingStates={loadingStates}
                   handleReaction={handleReaction}
-                  openPollModal={openPollModal}
                 />
               ) : (
                 <PollItem
                   item={item}
                   user={user}
+                  router={router}
                   userHasVoted={item.userVotedOption !== null}
                   selectedOption={selectedOptions[item.id]}
                   onSelectOption={selectOption}
@@ -850,7 +756,6 @@ const submitComment = async () => {
                   onClearVote={clearVote}
                   loadingStates={loadingStates}
                   handleReaction={handleReaction}
-                  openPollModal={openPollModal}
                 />
               )
             }
@@ -868,225 +773,6 @@ const submitComment = async () => {
           </Text>
         )}
       </View>
-      {selectedPoll && (
-        <Modal
-          visible={modalVisible}
-          animationType="slide"
-          onRequestClose={() => setModalVisible(false)}
-        >
-          <View style={{ flex: 1, padding: 20, backgroundColor: "#fff" }}>
-            <View style={{ marginBottom: 20 }}>
-              {/* Title */}
-              <Text
-                style={{
-                  fontSize: 22,
-                  fontWeight: "700",
-                  color: colors.DARK,
-                  marginBottom: 8,
-                }}
-              >
-                {selectedPoll.title}
-              </Text>
-
-              {/* Creator Info */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 10,
-                  marginBottom: 8,
-                }}
-              >
-                <Image
-                  source={
-                    selectedPoll.creatorProfilePic
-                      ? { uri: selectedPoll.creatorProfilePic }
-                      : require("./../../assets/images/default.png")
-                  }
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    borderWidth: 1,
-                    borderColor: "#ccc",
-                  }}
-                />
-                <Text style={{ fontSize: 14, color: colors.GRAY }}>
-                  Created by:{" "}
-                  <Text style={{ fontWeight: "600", color: colors.DARK }}>
-                    {selectedPoll.creatorName || "Unknown"}
-                  </Text>
-                </Text>
-              </View>
-              <View
-                style={{
-                  borderBottomWidth: 1,
-                  borderColor: "#eee",
-                  marginTop: 15,
-                }}
-              />
-
-              {/* Description */}
-              <Text
-                style={{ fontSize: 15, color: colors.GRAY, lineHeight: 20 }}
-              >
-                {selectedPoll.description}
-              </Text>
-            </View>
-            <FlatList
-                data={comments.slice(0, commentPage * COMMENTS_PER_PAGE)}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                <View
-                  style={{
-                    backgroundColor: "#f2f2f2",
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 10,
-                    flexDirection: "row",
-                    alignItems: "flex-start",
-                    gap: 10,
-                  }}
-                >
-                  {/* Profile Picture */}
-                  <Image
-                    source={
-                      item.profilePic
-                        ? { uri: item.profilePic }
-                        : require("./../../assets/images/default.png")
-                    }
-                    style={{ width: 40, height: 40, borderRadius: 20 }}
-                  />
-
-                  {/* Comment Body */}
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontWeight: "bold",
-                        fontSize: 14,
-                        color: colors.DARK,
-                      }}
-                    >
-                      {item.username}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: colors.GRAY }}>
-                      {formatTime(item.timestamp?.toDate?.() || new Date())}
-                    </Text>
-                    <Text style={{ fontSize: 14, marginTop: 5 }}>
-                      {item.text}
-                    </Text>
-
-                    {/* Edit/Delete Options */}
-                    {item.userId === user.uid && (
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          justifyContent: "flex-end",
-                          marginTop: 10,
-                          gap: 12,
-                        }}
-                      >
-                        <TouchableOpacity onPress={() => editComment(item)}>
-                          <Text
-                            style={{ color: colors.BLUE, fontWeight: "600" }}
-                          >
-                            Edit
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => deleteComment(item.id)}
-                        >
-                          <Text style={{ color: "red", fontWeight: "600" }}>
-                            Delete
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              )}
-            />
-            {comments.length > commentPage * COMMENTS_PER_PAGE && (
-        <TouchableOpacity
-          onPress={() => setCommentPage(prev => prev + 1)}
-          style={{
-            padding: 12,
-            backgroundColor: colors.DARK,
-            borderRadius: 10,
-            alignItems: 'center',
-            marginTop: 10,
-          }}
-        >
-          <Text style={{ color: 'white', fontWeight: 'bold' }}>
-            See More Comments
-          </Text>
-        </TouchableOpacity>
-      )}
-            {/* Input Section */}
-            <View
-              style={{
-                marginTop: 10,
-                borderTopWidth: 1,
-                borderColor: "#ddd",
-                paddingTop: 15,
-              }}
-            >
-              <TextInput
-                placeholder="Write a comment..."
-                value={newComment}
-                onChangeText={setNewComment}
-                multiline
-                style={{
-                  borderColor: colors.GRAY,
-                  borderWidth: 1,
-                  borderRadius: 10,
-                  padding: 10,
-                  fontSize: 14,
-                  backgroundColor: "#fff",
-                  minHeight: 50,
-                  textAlignVertical: "top",
-                }}
-              />
-              <TouchableOpacity
-                onPress={submitComment}
-                style={{
-                  backgroundColor: colors.DARK,
-                  padding: 12,
-                  borderRadius: 10,
-                  marginTop: 10,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "#fff",
-                    fontWeight: "bold",
-                    textAlign: "center",
-                  }}
-                >
-                  {newComment.trim() ? "Post Comment" : "Type something..."}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Close Button */}
-            <TouchableOpacity
-              onPress={() => setModalVisible(false)}
-              style={{ marginTop: 20 }}
-            >
-              <Text
-                style={{
-                  textAlign: "center",
-                  color: "red",
-                  fontWeight: "bold",
-                  fontSize: 16,
-                }}
-              >
-                Close
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </Modal>
-      )}
     </View>
   );
 }
@@ -1101,8 +787,8 @@ const PollItem = ({
   onClearVote,
   loadingStates,
   handleReaction,
-  openPollModal,
   user,
+  router
 }) => {
   const isLoading = loadingStates[item.id] || false;
 const formatDateLabel = (date) => {
@@ -1168,7 +854,7 @@ const formatDateLabel = (date) => {
       case 'pink':
         return { bg: colors.PINKBG, main: colors.PINKMAIN, sec: colors.PINKSEC };
       default:
-        return { bg: 'white', main: colors.BLUE, sec: 'white' }; // Default theme
+        return { bg: 'white', main: colors.BLUE, sec: colors.LIGHTBLUE }; // Default theme
     }
   };
   const theme = getThemeColors();
@@ -1435,7 +1121,7 @@ const formatDateLabel = (date) => {
   {/* Comment Button */}
   <TouchableOpacity 
     style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 40 }}
-    onPress={() => openPollModal(item)}
+    onPress={() => router.push(`../pages/comments?pollId=${item.id}`)}
   >
     <AntDesign
       name="message1"
@@ -1466,7 +1152,7 @@ const formatDateLabel = (date) => {
 };
 
 // PollResultItem component for inactive polls
-const PollResultItem = ({ item, handleReaction, openPollModal, user }) => {
+const PollResultItem = ({ item, handleReaction, openPollModal, user, router }) => {
   const totalVotes = item.totalVotes || 0;
   const maxVotes = Math.max(...item.options.map((option) => option.votes || 0));
 const formatDateLabel = (date) => {
@@ -1532,7 +1218,7 @@ const formatDateLabel = (date) => {
       case 'pink':
         return { bg: colors.PINKBG, main: colors.PINKMAIN, sec: colors.PINKSEC };
       default:
-        return { bg: 'white', main: colors.BLUE, sec: 'white' }; // Default theme
+        return { bg: 'white', main: colors.BLUE, sec: colors.LIGHTBLUE }; // Default theme
     }
   };
   const theme = getThemeColors();
@@ -1708,9 +1394,9 @@ const formatDateLabel = (date) => {
   </TouchableOpacity>
 
   {/* Comment Button */}
-  <TouchableOpacity 
+<TouchableOpacity 
     style={{ flexDirection: 'row', alignItems: 'center' }}
-    onPress={() => openPollModal(item)}
+    onPress={() => router.push(`../pages/comments?pollId=${item.id}`)}
   >
     <AntDesign
       name="message1"
