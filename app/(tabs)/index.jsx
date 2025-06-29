@@ -55,52 +55,68 @@ export default function HomeScreen() {
   const [searchType, setSearchType] = useState("polls"); // 'polls' or 'users'
   const flatListRef = useRef(null);
   const [refreshing, setRefreshing] = useState(false);
-
-
-const openPollModal = (poll) => {
-  router.push(`/comments?pollId=${poll.id}`);
-};
-
-const onRefresh = async () => {
-  setRefreshing(true);
-  try {
-    // Re-fetch polls data
-    const querySnapshot = await getDocs(
-      query(collection(db, "polls"), where("createdBy", "!=", user.uid))
-    );
-    // Process the data as you did in the useEffect
-    // ...
-  } catch (error) {
-    console.error("Error refreshing:", error);
-  } finally {
-    setRefreshing(false);
+  const [scheduledPolls, setScheduledPolls] = useState([]);
+  
+const getThemeColors = (theme) => {
+  switch(theme) {
+    case 'red':
+      return { bg: colors.REDBG, main: colors.REDMAIN, sec: colors.REDSEC};
+    case 'orange':
+      return { bg: colors.ORGBG, main: colors.ORGMAIN, sec: colors.ORGSEC };
+    case 'yellow':
+      return { bg: colors.YELBG, main: colors.YELMAIN, sec: colors.YELSEC };
+    case 'green':
+      return { bg: colors.GRBG, main: colors.GRMAIN, sec: colors.GRSEC };
+    case 'blue':
+      return { bg: colors.BLBG, main: colors.BLMAIN, sec: colors.BLSEC };
+    case 'violet':
+      return { bg: colors.VIOBG, main: colors.VIOMAIN, sec: colors.VIOSEC };
+    case 'pink':
+      return { bg: colors.PINKBG, main: colors.PINKMAIN, sec: colors.PINKSEC };
+    default:
+      return { bg: 'white', main: colors.BLUE, sec: colors.LIGHTBLUE };
   }
 };
 
-const handleFilterChange = (value) => {
-  setFilter(value);
-  // Scroll to top after a short delay to allow state update
-  setTimeout(() => {
-    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-  }, 100);
-};
-const handleSortChange = (value) => {
-  setSort(value);
-  setTimeout(() => {
-    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-  }, 100);
-};
-const handleSearch = (text) => {
-  setSearchQuery(text);
-  setTimeout(() => {
-    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-  }, 100);
-};
+ const openPollModal = (poll) => {
+    router.push(`/comments?pollId=${poll.id}`);
+  };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const querySnapshot = await getDocs(
+        query(collection(db, "polls"), where("createdBy", "!=", user.uid))
+      );
+    } catch (error) {
+      console.error("Error refreshing:", error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
+  const handleFilterChange = (value) => {
+    setFilter(value);
+    setTimeout(() => {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }, 100);
+  };
 
+  const handleSortChange = (value) => {
+    setSort(value);
+    setTimeout(() => {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }, 100);
+  };
 
-React.useEffect(() => {
+  const handleSearch = (text) => {
+    setSearchQuery(text);
+    setTimeout(() => {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }, 100);
+  };
+
+  React.useEffect(() => {
     registerScrollToTop(() => {
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
@@ -111,6 +127,7 @@ React.useEffect(() => {
     { label: "All Polls", value: "all" },
     { label: "Ongoing", value: "ongoing" },
     { label: "Ended", value: "ended" },
+    { label: "Scheduled", value: "scheduled" },
     { label: "Participated", value: "participated" },
     { label: "Not Participated", value: "notParticipated" },
   ];
@@ -142,7 +159,6 @@ React.useEffect(() => {
       [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
     });
 
-    // Send notification for new reactions only (not when removing)
     if (!hasReacted && pollData.createdBy !== user.uid) {
       await sendNotification({
         recipientId: pollData.createdBy,
@@ -155,7 +171,6 @@ React.useEffect(() => {
       });
     }
 
-    // Update both active and inactive polls
     setActivePolls((prev) =>
       prev.map((p) =>
         p.id === pollId
@@ -178,6 +193,17 @@ React.useEffect(() => {
           : p
       )
     );
+    setScheduledPolls((prev) =>
+      prev.map((p) =>
+        p.id === pollId
+          ? {
+              ...p,
+              [type === "like" ? "likes" : "dislikes"]: updatedCurrent,
+              [type === "like" ? "dislikes" : "likes"]: updatedOpposite,
+            }
+          : p
+      )
+    );
   };
 
   const formatTime = (timestamp) => {
@@ -186,161 +212,207 @@ React.useEffect(() => {
   };
 
   useEffect(() => {
-  const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-    if (!currentUser) {
-      console.log("No user detected, redirecting...");
-      router.replace("/login");
-      return;
-    }
-
-    setUser(currentUser);
-    setLoading(true);
-
-    try {
-      // Fetch user data from Firestore
-      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-      if (userDoc.exists()) {
-        setUsername(userDoc.data().username);
-        setUser(prev => ({
-          ...prev,
-          profilePic: userDoc.data().profilePic
-        }));
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser) {
+        console.log("No user detected, redirecting...");
+        router.replace("/login");
+        return;
       }
 
-      // Set up real-time listener for polls
-      const pollsQuery = query(
-        collection(db, "polls"),
-        where("createdBy", "!=", currentUser.uid)
-      );
+      setUser(currentUser);
+      setLoading(true);
 
-      const unsubscribePolls = onSnapshot(pollsQuery, async (querySnapshot) => {
-        const fetchedPolls = await Promise.all(
-          querySnapshot.docs.map(async (document) => {
-            const pollData = document.data();
-            const userVote = pollData.votes?.find(
-              (vote) => vote.userId === currentUser.uid
-            );
+      try {
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) {
+          setUsername(userDoc.data().username);
+          setUser(prev => ({
+            ...prev,
+            profilePic: userDoc.data().profilePic
+          }));
+        }
 
-            // Handle timestamps
-            const createdAt = pollData.createdAt?.toDate
-              ? pollData.createdAt.toDate().getTime()
-              : pollData.createdAt?.seconds
-              ? pollData.createdAt.seconds * 1000
-              : Date.now();
+        const pollsQuery = query(
+          collection(db, "polls"),
+          where("createdBy", "!=", currentUser.uid)
+        );
 
-            const durationMs =
-              pollData.duration?.unit === "days"
-                ? parseInt(pollData.duration.value) * 24 * 60 * 60 * 1000
-                : pollData.duration?.unit === "hours"
-                ? parseInt(pollData.duration.value) * 60 * 60 * 1000
-                : pollData.duration?.unit === "minutes"
-                ? parseInt(pollData.duration.value) * 60 * 1000
-                : 0;
+        const unsubscribePolls = onSnapshot(pollsQuery, async (querySnapshot) => {
+          const fetchedPolls = await Promise.all(
+            querySnapshot.docs.map(async (document) => {
+              const pollData = document.data();
+              const userVote = pollData.votes?.find(
+                (vote) => vote.userId === currentUser.uid
+              );
 
-            const expiresAt = createdAt + durationMs;
-            const remainingTime = expiresAt - Date.now();
-            const isExpired = remainingTime <= 0;
+              const createdAt = pollData.createdAt?.toDate
+                ? pollData.createdAt.toDate().getTime()
+                : pollData.createdAt?.seconds
+                ? pollData.createdAt.seconds * 1000
+                : Date.now();
 
-            // Fetch creator's profile picture
-            const creatorDoc = await getDoc(doc(db, "users", pollData.createdBy));
-            const creatorProfilePic = creatorDoc.exists()
-              ? creatorDoc.data().profilePic
-              : null;
+              // Handle scheduled polls
+              if (pollData.isScheduled) {
+              const startTime = pollData.startTime?.toDate 
+                ? pollData.startTime.toDate().getTime()
+                : pollData.startTime?.seconds 
+                ? pollData.startTime.seconds * 1000 
+                : now;
+              
+              const isNotStarted = now < startTime;
+              const shouldBeActive = !isNotStarted && pollData.status !== "active";
 
-            // Check if poll just expired
-            const wasActive = pollData.status !== "inactive";
-            const isNowExpired = isExpired;
+              // Automatically activate if start time has passed
+              if (shouldBeActive) {
+                try {
+                  await updateDoc(doc(db, "polls", document.id), { 
+                    status: "active",
+                    isScheduled: false,
+                    startTime: serverTimestamp() // Update to actual start time
+                  });
+                  console.log(`Poll ${document.id} activated`);
+                } catch (error) {
+                  console.error("Error activating scheduled poll:", error);
+                }
+              }
 
-            if (wasActive && isNowExpired) {
-              try {
-                // Update status in Firestore
-                await updateDoc(doc(db, "polls", document.id), { 
-                  status: "inactive" 
-                });
+              return {
+                id: document.id,
+                ...pollData,
+                isScheduled: isNotStarted,
+                isNotStarted,
+                startTime: pollData.startTime?.toDate() || new Date(startTime),
+                showPreview: pollData.showPreview || false,
+                userVotedOption: userVote ? userVote.option : null,
+                creatorProfilePic: pollData.creatorProfilePic || null,
+                creatorName: pollData.creatorName || "Unknown",
+                createdAt: pollData.createdAt?.toDate() || new Date(createdAt),
+              };
+            }
 
-                // Get all voters who aren't the creator
-                const voters = (pollData.votes || [])
-                  .map((vote) => vote.userId)
-                  .filter((uid) => uid !== pollData.createdBy);
+              // Handle regular polls
+              const durationMs =
+                pollData.duration?.unit === "days"
+                  ? parseInt(pollData.duration.value) * 24 * 60 * 60 * 1000
+                  : pollData.duration?.unit === "hours"
+                  ? parseInt(pollData.duration.value) * 60 * 60 * 1000
+                  : pollData.duration?.unit === "minutes"
+                  ? parseInt(pollData.duration.value) * 60 * 1000
+                  : 0;
 
-                // Notify voters and creator
-                const notifications = [
-                  ...voters.map((voterId) =>
+              const expiresAt = createdAt + durationMs;
+              const remainingTime = expiresAt - Date.now();
+              const isExpired = remainingTime <= 0;
+
+              const creatorDoc = await getDoc(doc(db, "users", pollData.createdBy));
+              const creatorProfilePic = creatorDoc.exists()
+                ? creatorDoc.data().profilePic
+                : null;
+
+              if (isExpired && pollData.status !== "inactive") {
+                try {
+                  await updateDoc(doc(db, "polls", document.id), { 
+                    status: "inactive" 
+                  });
+
+                  const voters = (pollData.votes || [])
+                    .map((vote) => vote.userId)
+                    .filter((uid) => uid !== pollData.createdBy);
+
+                  const notifications = [
+                    ...voters.map((voterId) =>
+                      sendNotification({
+                        recipientId: voterId,
+                        senderId: currentUser.uid,
+                        senderName: username || "Poll System",
+                        pollId: document.id,
+                        pollTitle: pollData.title,
+                        type: "pollEnded",
+                      })
+                    ),
                     sendNotification({
-                      recipientId: voterId,
+                      recipientId: pollData.createdBy,
                       senderId: currentUser.uid,
                       senderName: username || "Poll System",
                       pollId: document.id,
                       pollTitle: pollData.title,
                       type: "pollEnded",
                     })
-                  ),
-                  sendNotification({
-                    recipientId: pollData.createdBy,
-                    senderId: currentUser.uid,
-                    senderName: username || "Poll System",
-                    pollId: document.id,
-                    pollTitle: pollData.title,
-                    type: "pollEnded",
-                  })
-                ];
+                  ];
 
-                await Promise.all(notifications);
-              } catch (error) {
-                console.error("Error handling expired poll:", error);
+                  await Promise.all(notifications);
+                } catch (error) {
+                  console.error("Error handling expired poll:", error);
+                }
               }
+
+              return {
+                id: document.id,
+                ...pollData,
+                remainingTime,
+                isExpired,
+                userVotedOption: userVote ? userVote.option : null,
+                creatorProfilePic,
+                creatorName: pollData.creatorName || "Unknown",
+                createdAt: pollData.createdAt?.toDate() || new Date(createdAt),
+              };
+            })
+          );
+          
+          const userVotes = {};
+          fetchedPolls.forEach((poll) => {
+            if (poll.userVotedOption) {
+              userVotes[poll.id] = poll.userVotedOption;
             }
+          });
+          setSelectedOptions(userVotes);
 
-            return {
-              id: document.id,
-              ...pollData,
-              remainingTime,
-              isExpired,
-              userVotedOption: userVote ? userVote.option : null,
-              creatorProfilePic,
-              creatorName: pollData.creatorName || "Unknown",
-              createdAt: pollData.createdAt?.toDate() || new Date(createdAt),
-            };
-          })
-        );
+          setActivePolls(fetchedPolls.filter(poll => 
+            !poll.isExpired && !poll.isScheduled
+          ));
+          setInactivePolls(fetchedPolls.filter(poll => 
+            poll.isExpired && !poll.isScheduled
+          ));
+          setScheduledPolls(fetchedPolls.filter(poll => 
+            poll.isScheduled
+          ));
 
-        // Update selectedOptions with user's votes
-        const userVotes = {};
-        fetchedPolls.forEach((poll) => {
-          if (poll.userVotedOption) {
-            userVotes[poll.id] = poll.userVotedOption;
-          }
+          const activationInterval = setInterval(() => {
+      setActivePolls(prev => prev.map(poll => {
+        if (poll.isScheduled && poll.startTime && new Date(poll.startTime) <= new Date()) {
+          return { ...poll, isScheduled: false, isNotStarted: false };
+        }
+        return poll;
+      }));
+    }, 60000); // Check every minute
+
+    return () => {
+      unsubscribePolls();
+      clearInterval(activationInterval);
+    };
         });
-        setSelectedOptions(userVotes);
 
-        // Separate active and inactive polls
-        setActivePolls(fetchedPolls.filter((poll) => !poll.isExpired));
-        setInactivePolls(fetchedPolls.filter((poll) => poll.isExpired));
-      });
+        return () => unsubscribePolls();
+      } catch (error) {
+        console.error("Error initializing polls:", error);
+      } finally {
+        setLoading(false);
+      }
+    });
 
-      return () => unsubscribePolls();
-    } catch (error) {
-      console.error("Error initializing polls:", error);
-    } finally {
-      setLoading(false);
-    }
-  });
+    return () => unsubscribeAuth();
+  }, []);
 
-  return () => unsubscribeAuth();
-}, []);
-
-  // Handle vote selection
   const selectOption = (pollId, option) => {
     setSelectedOptions((prev) => {
-      // If the selected option is already chosen, remove it (toggle off)
       if (prev[pollId] === option) {
         const updatedOptions = { ...prev };
-        delete updatedOptions[pollId]; // Remove selection
+        delete updatedOptions[pollId];
         return updatedOptions;
       }
-      return { ...prev, [pollId]: option }; // Otherwise, select the new option
+      return { ...prev, [pollId]: option };
     });
-    setRefresh((prev) => !prev); // Force re-render
+    setRefresh((prev) => !prev);
   };
 
   const votePoll = async (pollId) => {
@@ -385,7 +457,6 @@ React.useEffect(() => {
         totalVotes: (pollData.totalVotes || 0) + 1,
       });
 
-      // Send notification to poll creator
       if (pollData.createdBy !== user.uid) {
         await sendNotification({
           recipientId: pollData.createdBy,
@@ -397,7 +468,6 @@ React.useEffect(() => {
         });
       }
 
-      // Re-fetch updated poll data
       const updatedPollSnap = await getDoc(pollRef);
       const updatedPollData = updatedPollSnap.data();
 
@@ -426,7 +496,6 @@ React.useEffect(() => {
   const clearVote = async (pollId) => {
     if (!user) return;
 
-    // Set loading state for this poll
     setLoadingStates((prev) => ({ ...prev, [pollId]: true }));
 
     try {
@@ -435,47 +504,41 @@ React.useEffect(() => {
 
       if (!pollSnap.exists()) {
         alert("Poll does not exist.");
-        setLoadingStates((prev) => ({ ...prev, [pollId]: false })); // Reset loading state
+        setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
         return;
       }
 
       const pollData = pollSnap.data();
 
-      // Find the user's vote
       const userVoteIndex = pollData.votes?.findIndex(
         (vote) => vote.userId === user.uid
       );
 
       if (userVoteIndex === -1) {
         alert("You have not voted in this poll.");
-        setLoadingStates((prev) => ({ ...prev, [pollId]: false })); // Reset loading state
+        setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
         return;
       }
 
-      // Remove user vote
       const updatedVotes = pollData.votes.filter(
         (vote) => vote.userId !== user.uid
       );
 
-      // Decrease vote count for the selected option
       const selectedOption = pollData.votes[userVoteIndex].option;
       const updatedOptions = pollData.options.map((option) =>
         option.text === selectedOption
-          ? { ...option, votes: Math.max(0, option.votes - 1) } // Ensure votes don't go negative
+          ? { ...option, votes: Math.max(0, option.votes - 1) }
           : option
       );
 
-      // Calculate new total votes count
       const newTotalVotes = Math.max(0, (pollData.totalVotes || 0) - 1);
 
-      // Update Firestore
       await updateDoc(pollRef, {
         votes: updatedVotes,
         options: updatedOptions,
         totalVotes: newTotalVotes,
       });
 
-      // Update state to force re-render
       setActivePolls((prevPolls) => {
         const newPolls = prevPolls.map((poll) =>
           poll.id === pollId
@@ -488,22 +551,19 @@ React.useEffect(() => {
               }
             : poll
         );
-        return [...newPolls]; // Return a new array reference to trigger re-render
+        return [...newPolls];
       });
     } catch (error) {
       console.error("Error clearing vote:", error);
       alert("Failed to remove vote.");
     } finally {
-      // Reset loading state
       setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
     }
   };
 
-  // Filter and sort the polls
   const getFilteredAndSortedPolls = () => {
-    let combinedPolls = [...activePolls, ...inactivePolls];
+    let combinedPolls = [...activePolls, ...inactivePolls, ...scheduledPolls];
 
-    // Apply search filter
     if (searchQuery) {
       combinedPolls = combinedPolls.filter(
         (poll) =>
@@ -512,14 +572,18 @@ React.useEffect(() => {
       );
     }
 
-    // Apply status filter
     switch (filter) {
       case "ongoing":
-        combinedPolls = combinedPolls.filter((poll) => !poll.isExpired);
+        combinedPolls = combinedPolls.filter((poll) => !poll.isExpired && !poll.isScheduled);
         break;
       case "ended":
         combinedPolls = combinedPolls.filter((poll) => poll.isExpired);
         break;
+      case "scheduled":
+      combinedPolls = combinedPolls.filter(poll => 
+        poll.isScheduled && (poll.showPreview || poll.createdBy === user?.uid)
+      );
+      break;
       case "participated":
         combinedPolls = combinedPolls.filter(
           (poll) => poll.userVotedOption !== null
@@ -531,11 +595,9 @@ React.useEffect(() => {
         );
         break;
       default:
-        // "all" - no filter
         break;
     }
 
-    // Apply sorting
     switch (sort) {
       case "newest":
         combinedPolls.sort((a, b) => b.createdAt - a.createdAt);
@@ -564,114 +626,107 @@ React.useEffect(() => {
     );
   }
 
-
   const filteredPolls = getFilteredAndSortedPolls();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.BLUE }}>
       <View style={{ backgroundColor: colors.LIGHT }}>
-<View
-  style={{
-    backgroundColor: colors.BLUE,
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 20, // Added proper bottom padding
-    borderBottomRightRadius: 25,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  }}
->
-  {/* Logo on the left */}
-  <Image
-    style={{
-      width: 45,
-      height: 45,
-      borderRadius: 5,
-    }}
-    source={require("./../../assets/images/logo3.jpg")}
-  />
-
-  {/* Search bar in the middle */}
-  <View style={{ flex: 1, marginHorizontal: 15}}>
-    {searchVisible ? (
-      <View style={{ 
-        flexDirection: 'row', 
-        alignItems: 'center',
-        backgroundColor: 'white',
-        borderRadius: 100,
-        paddingHorizontal: 5,
-        paddingVertical: 5,
-      }}>
-        <TextInput
-  style={{
-    flex: 1,
-    color: 'black',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  }}
-  placeholder="Search polls..."
-  value={searchQuery}
-  onChangeText={handleSearch} // Use the new handler
-  placeholderTextColor={colors.GRAY}
-  autoFocus
-/>
-        <TouchableOpacity
-          onPress={() => {
-            setSearchVisible(false);
-            setSearchQuery('');
+        <View
+          style={{
+            backgroundColor: colors.BLUE,
+            paddingVertical: 20,
+            paddingHorizontal: 20,
+            paddingBottom: 20,
+            borderBottomRightRadius: 25,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
           }}
-          style={{ marginLeft: 8 }}
         >
-          <Ionicons name="close" size={22} color={colors.DARK} />
-        </TouchableOpacity>
+          <Image
+            style={{
+              width: 45,
+              height: 45,
+              borderRadius: 5,
+            }}
+            source={require("./../../assets/images/logo3.jpg")}
+          />
+
+          <View style={{ flex: 1, marginHorizontal: 15}}>
+            {searchVisible ? (
+              <View style={{ 
+                flexDirection: 'row', 
+                alignItems: 'center',
+                backgroundColor: 'white',
+                borderRadius: 100,
+                paddingHorizontal: 5,
+                paddingVertical: 5,
+              }}>
+                <TextInput
+                  style={{
+                    flex: 1,
+                    color: 'black',
+                    paddingVertical: 8,
+                    paddingHorizontal: 10,
+                  }}
+                  placeholder="Search polls..."
+                  value={searchQuery}
+                  onChangeText={handleSearch}
+                  placeholderTextColor={colors.GRAY}
+                  autoFocus
+                />
+                <TouchableOpacity
+                  onPress={() => {
+                    setSearchVisible(false);
+                    setSearchQuery('');
+                  }}
+                  style={{ marginLeft: 8 }}
+                >
+                  <Ionicons name="close" size={22} color={colors.DARK} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center',
+            minWidth: 80,
+            justifyContent: 'flex-end'
+          }}>
+            {!searchVisible && (
+              <TouchableOpacity 
+                onPress={() => setSearchVisible(true)} 
+                style={{ padding: 8 }}
+              >
+                <Ionicons name="search" size={24} color="white" />
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={{ padding: 8 }}
+              onPress={() => router.push('./pages/notifications')}
+            >
+              <Ionicons name="notifications-outline" size={24} color="white" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={{ marginLeft: 8 }}>
+              <Image
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                }}
+                source={
+                  user?.profilePic
+                    ? { uri: user.profilePic }
+                    : require('./../../assets/images/default.png')
+                }
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
-    ) : null}
-  </View>
-
-  {/* Right side icons */}
-  <View style={{ 
-    flexDirection: 'row', 
-    alignItems: 'center',
-    minWidth: 80, // Ensures consistent spacing
-    justifyContent: 'flex-end'
-  }}>
-    {/* Search Icon */}
-    {!searchVisible && (
-      <TouchableOpacity 
-        onPress={() => setSearchVisible(true)} 
-        style={{ padding: 8 }}
-      >
-        <Ionicons name="search" size={24} color="white" />
-      </TouchableOpacity>
-    )}
-
-    {/* Notification button */}
-    <TouchableOpacity
-  style={{ padding: 8 }}
-  onPress={() => router.push('./pages/notifications')}
->
-  <Ionicons name="notifications-outline" size={24} color="white" />
-</TouchableOpacity>
-
-
-<TouchableOpacity style={{ marginLeft: 8 }}>
-  <Image
-    style={{
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-    }}
-    source={
-      user?.profilePic
-        ? { uri: user.profilePic }
-        : require('./../../assets/images/default.png')
-    }
-  />
-</TouchableOpacity>
-  </View>
-</View>
-</View>
       <View
         style={{
           backgroundColor: colors.LIGHT,
@@ -681,9 +736,7 @@ React.useEffect(() => {
           flex: 1,
         }}
       >
-        {/* Filter and Sort Row */}
         <View style={styles.filterSortRow}>
-          {/* Filter Dropdown */}
           <View style={styles.dropdownContainer}>
             <Dropdown
               style={styles.dropdown}
@@ -711,7 +764,6 @@ React.useEffect(() => {
             />
           </View>
 
-          {/* Sort Dropdown */}
           <View style={styles.dropdownContainer}>
             <Dropdown
               style={styles.dropdown}
@@ -740,51 +792,64 @@ React.useEffect(() => {
           </View>
         </View>
 
-        {/* Combined Polls Section */}
         {filteredPolls.length > 0 ? (
           <FlatList
-          ref={flatListRef}
-          key={`${filter}-${sort}`}
+            ref={flatListRef}
+            key={`${filter}-${sort}`}
             data={filteredPolls}
             keyExtractor={(item) => item.id}
             extraData={[filter, sort, searchQuery, refresh]}
             refreshControl={
-    <RefreshControl
-      refreshing={refreshing}
-      onRefresh={onRefresh}
-      colors={[colors.BLUE]}
-      tintColor={colors.BLUE}
-    />
-  }
-            renderItem={({ item }) =>
-              item.isExpired ? (
-                <PollResultItem
-                  item={item}
-                  user={user}
-                  router={router}
-                  userHasVoted={item.userVotedOption !== null}
-                  selectedOption={selectedOptions[item.id]}
-                  onSelectOption={selectOption}
-                  onVote={votePoll}
-                  onClearVote={clearVote}
-                  loadingStates={loadingStates}
-                  handleReaction={handleReaction}
-                />
-              ) : (
-                <PollItem
-                  item={item}
-                  user={user}
-                  router={router}
-                  userHasVoted={item.userVotedOption !== null}
-                  selectedOption={selectedOptions[item.id]}
-                  onSelectOption={selectOption}
-                  onVote={votePoll}
-                  onClearVote={clearVote}
-                  loadingStates={loadingStates}
-                  handleReaction={handleReaction}
-                />
-              )
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={[colors.BLUE]}
+                tintColor={colors.BLUE}
+              />
             }
+            renderItem={({ item }) => {
+              if (item.isScheduled) {
+                return (
+                  <ScheduledPollItem 
+                    item={item} 
+                    theme={getThemeColors(item.theme)} 
+                    user={user}
+                    router={router}
+                    handleReaction={handleReaction}
+                  />
+                );
+              } else if (item.isExpired) {
+                return (
+                  <PollResultItem
+                    item={item}
+                    user={user}
+                    router={router}
+                    userHasVoted={item.userVotedOption !== null}
+                    selectedOption={selectedOptions[item.id]}
+                    onSelectOption={selectOption}
+                    onVote={votePoll}
+                    onClearVote={clearVote}
+                    loadingStates={loadingStates}
+                    handleReaction={handleReaction}
+                  />
+                );
+              } else {
+                return (
+                  <PollItem
+                    item={item}
+                    user={user}
+                    router={router}
+                    userHasVoted={item.userVotedOption !== null}
+                    selectedOption={selectedOptions[item.id]}
+                    onSelectOption={selectOption}
+                    onVote={votePoll}
+                    onClearVote={clearVote}
+                    loadingStates={loadingStates}
+                    handleReaction={handleReaction}
+                  />
+                );
+              }
+            }}
           />
         ) : (
           <Text
@@ -803,6 +868,276 @@ React.useEffect(() => {
   );
 }
 
+const ScheduledPollItem = ({ item, user, router, handleReaction }) => {
+  const formatDateLabel = (date) => {
+    if (!date) return 'Soon';
+    
+    // Handle Firebase Timestamp or Date object
+    const d = date.toDate ? date.toDate() : new Date(date);
+    
+    if (isNaN(d.getTime())) return 'Invalid date';
+
+    const now = new Date();
+    const isThisYear = d.getFullYear() === now.getFullYear();
+
+    // Format time as 1:00 PM
+    const timeString = d.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }).replace(/^0/, ''); // Remove leading zero for hours
+
+    // Format date
+    if (d.toDateString() === now.toDateString()) {
+      return `Today at ${timeString}`;
+    }
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) {
+      return `Yesterday at ${timeString}`;
+    }
+
+    // For dates within this year, don't show year
+    if (isThisYear) {
+      return `${d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      })} at ${timeString}`;
+    }
+
+    // For older dates, show year
+    return `${d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    })} at ${timeString}`;
+  };
+
+  const getThemeColors = () => {
+    switch(item.theme) {
+      case 'red':
+        return { bg: colors.REDBG, main: colors.REDMAIN, sec: colors.REDSEC};
+      case 'orange':
+        return { bg: colors.ORGBG, main: colors.ORGMAIN, sec: colors.ORGSEC };
+      case 'yellow':
+        return { bg: colors.YELBG, main: colors.YELMAIN, sec: colors.YELSEC };
+      case 'green':
+        return { bg: colors.GRBG, main: colors.GRMAIN, sec: colors.GRSEC };
+      case 'blue':
+        return { bg: colors.BLBG, main: colors.BLMAIN, sec: colors.BLSEC };
+      case 'violet':
+        return { bg: colors.VIOBG, main: colors.VIOMAIN, sec: colors.VIOSEC };
+      case 'pink':
+        return { bg: colors.PINKBG, main: colors.PINKMAIN, sec: colors.PINKSEC };
+      default:
+        return { bg: 'white', main: colors.BLUE, sec: colors.LIGHTBLUE };
+    }
+  };
+  
+  const themeColors = getThemeColors();
+  const shouldShowPreview = item.showPreview || item.createdBy === user?.uid;
+  return (
+    <View style={{
+      backgroundColor: themeColors.bg,
+      padding: 20,
+      marginBottom: 25,
+      borderRadius: 10,
+      shadowColor: "#000",
+      shadowOpacity: 0.1,
+      shadowRadius: 5,
+      borderWidth: 4,
+      borderColor: "white",
+      elevation: 2,
+      shadowColor: "gray",
+      opacity: 0.9
+    }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Image
+            source={item.creatorProfilePic 
+              ? { uri: item.creatorProfilePic } 
+              : require('./../../assets/images/default.png')}
+            style={{ width: 35, height: 35, borderRadius: 20, marginRight: 10 }}
+          />
+          <View>
+            <Text style={{ fontSize: 14, fontWeight: 'bold', color: colors.GRAY }}>
+              {item.creatorName}
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.GRAY, marginTop: 2 }}>
+              {formatDateLabel(item.createdAt)}
+            </Text>
+          </View>
+        </View>
+        <View style={{ 
+          backgroundColor: colors.LIGHTGRAY, 
+          borderRadius: 20,
+          paddingVertical: 5,
+          paddingHorizontal: 10,
+          minWidth: 80,
+          alignItems: "center",
+        }}>
+          <Text style={{ color: "white", fontSize: 14 }}>Scheduled</Text>
+        </View>
+      </View>
+
+      <Text style={{ fontSize: 16, fontWeight: "bold", marginVertical: 5 }}>
+        {item.title}
+      </Text>
+      {item.description && <Text style={{ fontSize: 14 }}>{item.description}</Text>}
+      
+      {item.imageBase64 && (
+        <Image 
+          source={{ uri: item.imageBase64 }}
+          style={{
+            width: '100%',
+            height: 200,
+            borderRadius: 10,
+            marginTop: 10,
+            resizeMode: 'cover'
+          }}
+        />
+      )}
+
+      {/* Only show preview section if showPreview is true */}
+      {item.showPreview && (
+        <>
+          <Text style={{ 
+            color: colors.GRAY, 
+            marginVertical: 10,
+            fontStyle: 'italic'
+          }}>
+            Preview (poll not started yet)
+          </Text>
+          
+          {item.options?.map((option, index) => (
+            <View key={index} style={{
+              minHeight: 50,
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "white",
+              padding: 10,
+              marginTop: 8,
+              borderRadius: 15,
+              shadowColor: "#000",
+              shadowOpacity: 0.1,
+              shadowRadius: 5,
+              borderWidth: 4,
+              borderColor: "white",
+              elevation: 2,
+              shadowColor: "gray",
+            }}>
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 10,
+                  borderWidth: 2,
+                  borderColor: colors.DARK,
+                  backgroundColor: "transparent",
+                  marginRight: 10,
+                }}
+              />
+              <Text style={{ color: colors.DARK, flex: 1, flexWrap: "wrap" }}>
+                {option.text}
+              </Text>
+            </View>
+          ))}
+        </>
+      )}
+
+      <Text style={{ 
+        marginTop: 10,
+        color: themeColors.main,
+        fontSize: 14,
+        fontWeight: 'bold'
+      }}>
+        Starts at: {formatDateLabel(item.startTime)}
+      </Text>
+      
+      {item.endTime && (
+        <Text style={{ 
+          color: themeColors.main,
+          fontSize: 14,
+          fontWeight: 'bold'
+        }}>
+          Ends at: {formatDateLabel(item.endTime)}
+        </Text>
+      )}
+
+      <View style={{
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 15,
+        paddingHorizontal: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+        paddingTop: 20,
+      }}>
+        <TouchableOpacity 
+          style={{ flexDirection: 'row', alignItems: 'center' }}
+          onPress={() => handleReaction(item.id, "like")}
+        >
+          <AntDesign
+            name={item.likes?.includes(user?.uid) ? "like1" : "like2"}
+            size={20}
+            color={item.likes?.includes(user?.uid) ? themeColors.main : colors.LIGHTGRAY}
+          />
+          <Text style={{
+            marginLeft: 5,
+            fontSize: 14,
+            color: item.likes?.includes(user?.uid) ? themeColors.main : colors.LIGHTGRAY
+          }}>
+            {item.likes?.length || 0}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 3 }}
+          onPress={() => handleReaction(item.id, "dislike")}
+        >
+          <AntDesign
+            name={item.dislikes?.includes(user?.uid) ? "dislike1" : "dislike2"}
+            size={20}
+            color={item.dislikes?.includes(user?.uid) ? themeColors.main : colors.LIGHTGRAY}
+          />
+          <Text style={{
+            marginLeft: 5,
+            fontSize: 14,
+            color: item.dislikes?.includes(user?.uid) ? themeColors.main : colors.LIGHTGRAY
+          }}>
+            {item.dislikes?.length || 0}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 40 }}
+          onPress={() => router.push(`../pages/comments?pollId=${item.id}`)}
+        >
+          <AntDesign
+            name="message1"
+            size={20}
+            color={colors.LIGHTGRAY}
+          />
+          <Text style={{ marginLeft: 5, fontSize: 14, color: colors.LIGHTGRAY }}>
+            Comments
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={{ flexDirection: 'row', alignItems: 'center' }}
+          onPress={() => handleShare(item)}
+        >
+          <AntDesign
+            name="sharealt"
+            size={20}
+            color={colors.LIGHTGRAY}
+          />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
 // PollItem component for active polls
 const PollItem = ({
   item,

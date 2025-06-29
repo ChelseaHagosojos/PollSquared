@@ -18,18 +18,45 @@ export default function Create() {
   const [options, setOptions] = useState(['', '']);
   const [booleanType, setBooleanType] = useState('yesno'); // 'yesno' or 'truefalse'
   const [isLoading, setIsLoading] = useState(false);
-const [selectedTheme, setSelectedTheme] = useState(null); // null means default
-const [datePickerOpen, setDatePickerOpen] = useState(false);
+const [selectedTheme, setSelectedTheme] = useState(null); 
 
 const openAndroidDatePicker = () => {
+  // First open date picker
   DateTimePickerAndroid.open({
     value: duration.scheduledTime || new Date(),
-    mode: 'datetime',
+    mode: 'date',
     is24Hour: true,
     minimumDate: new Date(),
     onChange: (event, selectedDate) => {
       if (event.type === 'set' && selectedDate) {
-        setDuration(prev => ({ ...prev, scheduledTime: selectedDate }));
+        // Create a new date object with the selected date
+        const newDate = new Date(selectedDate);
+        
+        // If we already have a scheduled time, preserve its time components
+        if (duration.scheduledTime) {
+          newDate.setHours(duration.scheduledTime.getHours());
+          newDate.setMinutes(duration.scheduledTime.getMinutes());
+        }
+        
+        // Then open time picker with this new date
+        DateTimePickerAndroid.open({
+          value: newDate,
+          mode: 'time',
+          is24Hour: true,
+          onChange: (timeEvent, selectedTime) => {
+            if (timeEvent.type === 'set' && selectedTime) {
+              // Create final date by combining date and time
+              const finalDate = new Date(selectedDate);
+              finalDate.setHours(selectedTime.getHours());
+              finalDate.setMinutes(selectedTime.getMinutes());
+              setDuration(prev => ({ 
+                ...prev, 
+                scheduledTime: finalDate,
+                showPreview: prev.showPreview // Preserve showPreview state
+              }));
+            }
+          },
+        });
       }
     },
   });
@@ -496,44 +523,21 @@ case 3:
   style={styles.datePickerButton}
 >
   <Text style={styles.datePickerText}>
-    {duration.scheduledTime 
-      ? duration.scheduledTime.toLocaleString() 
-      : 'Select date and time'}
-  </Text>
+  {duration.scheduledTime 
+    ? duration.scheduledTime.toLocaleString([], {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }) 
+    : 'Select date and time'}
+</Text>
   <Ionicons name="calendar" size={20} color={colors.BLUE} />
 </TouchableOpacity>
 
 
-{datePickerOpen && (
-  <DateTimePicker
-    value={duration.scheduledTime || new Date()}
-    mode="datetime"
-    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-    minimumDate={new Date()}
-    onChange={(event, selectedDate) => {
-      setDatePickerOpen(false);
-      
-      // Handle Android and iOS differently
-      if (Platform.OS === 'android') {
-        // On Android, we need to check if the user pressed "OK" or canceled
-        if (event.type === 'set' && selectedDate) {
-          setDuration(prev => ({ 
-            ...prev, 
-            scheduledTime: selectedDate 
-          }));
-        }
-      } else {
-        // On iOS, the picker doesn't have a cancel button, so we always get a date
-        if (selectedDate) {
-          setDuration(prev => ({ 
-            ...prev, 
-            scheduledTime: selectedDate 
-          }));
-        }
-      }
-    }}
-  />
-)}
+
           </View>
 
           {/* Add toggle for preview visibility */}
