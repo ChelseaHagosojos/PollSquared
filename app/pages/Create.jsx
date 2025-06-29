@@ -297,20 +297,29 @@ case 1:
           );
         }
 
-        if (pollType === 'rating') {
-          return (
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Rating Scale (1 to ?):</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter max rating (e.g., 5)"
-                keyboardType="numeric"
-                value={options[0]}
-                onChangeText={(text) => updateOption(text, 0)}
-              />
-            </View>
-          );
-        }
+       if (pollType === 'rating') {
+  return (
+    <View style={styles.inputContainer}>
+      <Text style={styles.label}>Rating Scale (1 to ?):</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Enter max rating (e.g., 5)"
+        keyboardType="numeric"
+        value={options[0]}
+        onChangeText={(text) => {
+          // Allow only numbers and max of 10
+          const numericValue = parseInt(text);
+          if (!isNaN(numericValue) && numericValue <= 10) {
+            updateOption(text, 0);
+          } else if (text === "") {
+            updateOption("", 0); // Allow clearing input
+          }
+        }}
+      />
+    </View>
+  );
+}
+
 
         if (pollType === 'likert') {
           return (

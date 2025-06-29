@@ -185,115 +185,128 @@ const handleRefresh = async () => {
     });
   };
 
-  const votePoll = async (pollId) => {
-    if (!user || !poll) return;
+const votePoll = async () => {
+  if (!user || !poll) return;
 
-    setLoadingStates((prev) => ({ ...prev, [pollId]: true }));
+  setLoadingStates((prev) => ({ ...prev, [pollId]: true }));
 
-    const selectedOption = selectedOptions[pollId];
-    if (!selectedOption) {
-      alert("Please select an option before submitting.");
+  const selectedOption = selectedOptions[pollId];
+  if (!selectedOption) {
+    Alert.alert("Error", "Please select an option before submitting.");
+    setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
+    return;
+  }
+
+  try {
+    const pollRef = doc(db, "polls", pollId);
+    
+    // Calculate the new vote count for the selected option
+    const updatedOptions = poll.options.map((option) => {
+      if (option.text === selectedOption) {
+        return { ...option, votes: (option.votes || 0) + 1 };
+      }
+      return option;
+    });
+
+    // Add the user's vote to the votes array
+    const newVote = { userId: user.uid, option: selectedOption };
+    const updatedVotes = [...(poll.votes || []), newVote];
+
+    await updateDoc(pollRef, {
+      votes: updatedVotes,
+      options: updatedOptions,
+      totalVotes: (poll.totalVotes || 0) + 1,
+    });
+
+    // Update local state
+    setPoll((prev) => ({
+      ...prev,
+      votes: updatedVotes,
+      options: updatedOptions,
+      totalVotes: (prev.totalVotes || 0) + 1,
+      userVotedOption: selectedOption,
+    }));
+
+    // Clear the selected option
+    setSelectedOptions((prev) => {
+      const newOptions = { ...prev };
+      delete newOptions[pollId];
+      return newOptions;
+    });
+
+    // Send notification if needed
+    if (poll.createdBy !== user.uid) {
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      const username = userDoc.exists() ? userDoc.data().username : user.email;
+      
+      await sendNotification({
+        recipientId: poll.createdBy,
+        senderId: user.uid,
+        senderName: username,
+        pollId: pollId,
+        pollTitle: poll.title,
+        type: "vote",
+      });
+    }
+  } catch (error) {
+    console.error("Error voting:", error);
+    Alert.alert("Error", "Failed to submit vote.");
+  } finally {
+    setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
+  }
+};
+
+  const clearVote = async () => {
+  if (!user || !poll) return;
+
+  setLoadingStates((prev) => ({ ...prev, [pollId]: true }));
+
+  try {
+    const pollRef = doc(db, "polls", pollId);
+    const userVote = poll.votes?.find((vote) => vote.userId === user.uid);
+
+    if (!userVote) {
+      Alert.alert("Error", "You have not voted in this poll.");
       setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
       return;
     }
 
-    try {
-      const pollRef = doc(db, "polls", pollId);
-      const updatedOptions = poll.options.map((option) =>
-        option.text === selectedOption
-          ? { ...option, votes: option.votes + 1 }
-          : option
-      );
-
-      await updateDoc(pollRef, {
-        votes: arrayUnion({ userId: user.uid, option: selectedOption }),
-        options: updatedOptions,
-        totalVotes: (poll.totalVotes || 0) + 1,
-      });
-
-      setPoll((prev) => ({
-        ...prev,
-        votes: [...(prev.votes || []), { userId: user.uid, option: selectedOption }],
-        options: updatedOptions,
-        totalVotes: (prev.totalVotes || 0) + 1,
-        userVotedOption: selectedOption,
-      }));
-
-      if (poll.createdBy !== user.uid) {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        const username = userDoc.exists() ? userDoc.data().username : user.email;
-        
-        await sendNotification({
-          recipientId: poll.createdBy,
-          senderId: user.uid,
-          senderName: username,
-          pollId: pollId,
-          pollTitle: poll.title,
-          type: "vote",
-        });
+    const selectedOption = userVote.option;
+    const updatedOptions = poll.options.map((option) => {
+      if (option.text === selectedOption) {
+        return { ...option, votes: Math.max(0, (option.votes || 0) - 1) };
       }
-    } catch (error) {
-      console.error("Error voting:", error);
-      alert("Failed to submit vote.");
-    } finally {
-      setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
-    }
-  };
+      return option;
+    });
 
-  const clearVote = async (pollId) => {
-    if (!user || !poll) return;
+    const updatedVotes = poll.votes.filter((vote) => vote.userId !== user.uid);
 
-    setLoadingStates((prev) => ({ ...prev, [pollId]: true }));
+    await updateDoc(pollRef, {
+      votes: updatedVotes,
+      options: updatedOptions,
+      totalVotes: Math.max(0, (poll.totalVotes || 0) - 1),
+    });
 
-    try {
-      const pollRef = doc(db, "polls", pollId);
-      const userVoteIndex = poll.votes?.findIndex(
-        (vote) => vote.userId === user.uid
-      );
+    setPoll((prev) => ({
+      ...prev,
+      votes: updatedVotes,
+      options: updatedOptions,
+      totalVotes: Math.max(0, (prev.totalVotes || 0) - 1),
+      userVotedOption: null,
+    }));
 
-      if (userVoteIndex === -1) {
-        alert("You have not voted in this poll.");
-        setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
-        return;
-      }
-
-      const selectedOption = poll.votes[userVoteIndex].option;
-      const updatedOptions = poll.options.map((option) =>
-        option.text === selectedOption
-          ? { ...option, votes: Math.max(0, option.votes - 1) }
-          : option
-      );
-
-      const updatedVotes = poll.votes.filter(
-        (vote) => vote.userId !== user.uid
-      );
-
-      await updateDoc(pollRef, {
-        votes: updatedVotes,
-        options: updatedOptions,
-        totalVotes: Math.max(0, (poll.totalVotes || 0) - 1),
-      });
-
-      setPoll((prev) => ({
-        ...prev,
-        votes: updatedVotes,
-        options: updatedOptions,
-        totalVotes: Math.max(0, (prev.totalVotes || 0) - 1),
-        userVotedOption: null,
-      }));
-
-      setSelectedOptions(prev => {
-        const newOptions = {...prev};
-        delete newOptions[pollId];
-        return newOptions;
-      });
-    } catch (error) {
-      console.error("Error clearing vote:", error);
-      alert("Failed to remove vote.");
-    } finally {
-      setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
-    }
-  };
+    setSelectedOptions((prev) => {
+      const newOptions = { ...prev };
+      delete newOptions[pollId];
+      return newOptions;
+    });
+  } catch (error) {
+    console.error("Error clearing vote:", error);
+    Alert.alert("Error", "Failed to remove vote.");
+  } finally {
+    setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
+  }
+};
 
   const handleReaction = async (pollId, type) => {
     if (!user) return;
@@ -337,8 +350,22 @@ const handleRefresh = async () => {
 
   const submitComment = async () => {
     if (!newComment.trim() || !user || !pollId) return;
-
+if (newComment.length > 500) {
+    Alert.alert("Error", "Comments cannot exceed 500 characters.");
+    return;
+  }
     try {
+      // Check total comment count
+    const commentsRef = collection(db, "polls", pollId, "comments");
+    const q = query(commentsRef);
+    const querySnapshot = await getDocs(q);
+    
+    if (querySnapshot.size >= 100) {
+      Alert.alert("Limit Reached", "Maximum of 100 comments per poll reached.");
+      return;
+    }
+
+
       const userDoc = await getDoc(doc(db, "users", user.uid));
       const username = userDoc.exists() ? userDoc.data().username : user.email;
       const profilePic = userDoc.exists() ? userDoc.data().profilePic : null;
@@ -493,10 +520,7 @@ const handleRefresh = async () => {
         <TouchableOpacity onPress={() => router.back()}>
           <AntDesign name="arrowleft" size={24} color={colors.DARK} />
         </TouchableOpacity>
-        {/* <Text style={styles.headerTitle}>Comments</Text> */}
-        <TouchableOpacity>
-          <Feather name="share-2" size={20} color={colors.DARK} />
-        </TouchableOpacity>
+
       </View>
 
       {/* Scrollable content */}
@@ -614,7 +638,7 @@ const handleRefresh = async () => {
             </Text>
           ) : !poll.userVotedOption ? (
             <TouchableOpacity
-              onPress={() => votePoll(poll.id)}
+              onPress={votePoll}
               disabled={!selectedOptions[poll.id] || !!loadingStates[poll.id]}  // Explicit boolean conversion
               style={{
                 backgroundColor: theme.main,
@@ -631,7 +655,7 @@ const handleRefresh = async () => {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              onPress={() => clearVote(poll.id)}
+              onPress={clearVote}
               disabled={!!loadingStates[poll.id]}  // Explicit boolean conversion
               style={{
                 backgroundColor: "gray",
@@ -742,47 +766,54 @@ const handleRefresh = async () => {
       </ScrollView>
 
       {/* Comment Input */}
-      <View style={styles.commentInputContainer}>
-        <TextInput
-          placeholder="Write a comment..."
-          value={newComment}
-          onChangeText={setNewComment}
-          multiline
-          style={styles.commentInput}
-        />
-        {editingCommentId ? (
-          <View style={styles.editButtons}>
-            <TouchableOpacity
-              onPress={cancelEdit}
-              style={[styles.commentButton, styles.cancelButton]}
-            >
-              <Text style={styles.buttonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={submitComment}
-              disabled={!newComment.trim()}
-              style={[
-                styles.commentButton,
-                styles.submitButton,
-                !newComment.trim() && styles.disabledButton,
-              ]}
-            >
-              <Text style={styles.buttonText}>Update</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            onPress={submitComment}
-            disabled={!newComment.trim()}
-            style={[
-              styles.commentSubmitButton,
-              !newComment.trim() && styles.commentSubmitButtonDisabled,
-            ]}
-          >
-            <Text style={styles.commentSubmitText}>Post</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      {/* Comment Input */}
+<View style={styles.commentInputContainer}>
+  <View style={{ flex: 1 }}>
+    <TextInput
+      placeholder="Write a comment..."
+      value={newComment}
+      onChangeText={setNewComment}
+      multiline
+      maxLength={500}
+      style={styles.commentInput}
+    />
+    <Text style={styles.charCounter}>
+      {newComment.length}/500
+    </Text>
+  </View>
+  {editingCommentId ? (
+    <View style={styles.editButtons}>
+      <TouchableOpacity
+        onPress={cancelEdit}
+        style={[styles.commentButton, styles.cancelButton]}
+      >
+        <Text style={styles.buttonText}>Cancel</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={submitComment}
+        disabled={!newComment.trim()}
+        style={[
+          styles.commentButton,
+          styles.submitButton,
+          (!newComment.trim() || newComment.length > 500) && styles.disabledButton,
+        ]}
+      >
+        <Text style={styles.buttonText}>Update</Text>
+      </TouchableOpacity>
+    </View>
+  ) : (
+    <TouchableOpacity
+      onPress={submitComment}
+      disabled={!newComment.trim() || newComment.length > 500}
+      style={[
+        styles.commentSubmitButton,
+        (!newComment.trim() || newComment.length > 500) && styles.commentSubmitButtonDisabled,
+      ]}
+    >
+      <Text style={styles.commentSubmitText}>Post</Text>
+    </TouchableOpacity>
+  )}
+</View>
     </View>
   );
 }

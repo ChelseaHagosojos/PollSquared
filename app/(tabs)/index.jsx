@@ -1108,7 +1108,7 @@ const formatDateLabel = (date) => {
 
   {/* Like Button */}
   <TouchableOpacity 
-    style={{ flexDirection: 'row', alignItems: 'center' }}
+    style={{ flexDirection: 'row', alignItems: 'center',paddingHorizontal: 8 }}
     onPress={() => handleReaction(item.id, "like")}
   >
     <AntDesign
@@ -1127,7 +1127,7 @@ const formatDateLabel = (date) => {
 
   {/* Dislike Button */}
   <TouchableOpacity 
-    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 3 }}
+    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}
     onPress={() => handleReaction(item.id, "dislike")}
   >
     <AntDesign
@@ -1146,7 +1146,7 @@ const formatDateLabel = (date) => {
 
   {/* Comment Button */}
   <TouchableOpacity 
-    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 40 }}
+    style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 100 }}
     onPress={() => router.push(`../pages/comments?pollId=${item.id}`)}
   >
     <AntDesign
@@ -1159,17 +1159,6 @@ const formatDateLabel = (date) => {
     </Text>
   </TouchableOpacity>
 
-  {/* Share Button */}
-  <TouchableOpacity 
-    style={{ flexDirection: 'row', alignItems: 'center' }}
-    onPress={() => handleShare(item)}
-  >
-    <AntDesign
-      name="sharealt"
-      size={20}
-      color={colors.LIGHTGRAY}
-    />
-  </TouchableOpacity>
 
 </View>
 
@@ -1421,7 +1410,7 @@ const formatDateLabel = (date) => {
 
   {/* Comment Button */}
 <TouchableOpacity 
-    style={{ flexDirection: 'row', alignItems: 'center' }}
+    style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 100 }}
     onPress={() => router.push(`../pages/comments?pollId=${item.id}`)}
   >
     <AntDesign
@@ -1432,18 +1421,6 @@ const formatDateLabel = (date) => {
     <Text style={{ marginLeft: 5, fontSize: 14, color: colors.LIGHTGRAY }}>
       Comments
     </Text>
-  </TouchableOpacity>
-
-  {/* Share Button */}
-  <TouchableOpacity 
-    style={{ flexDirection: 'row', alignItems: 'center' }}
-    onPress={() => handleShare(item)}
-  >
-    <AntDesign
-      name="sharealt"
-      size={20}
-      color={colors.LIGHTGRAY}
-    />
   </TouchableOpacity>
 
 </View>

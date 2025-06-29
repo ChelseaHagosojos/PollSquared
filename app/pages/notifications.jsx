@@ -8,7 +8,7 @@ import {
   Modal,
   Pressable,
 } from "react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { auth, db } from "../../firebase/firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -19,6 +19,7 @@ import {
   doc,
   updateDoc,
   deleteDoc,
+  getDoc,
 } from "firebase/firestore";
 import colors from "../../constant/colors";
 import { useRouter } from "expo-router";
@@ -31,7 +32,10 @@ export default function Notifications() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const router = useRouter();
+  const menuButtonRefs = useRef({});
+
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -50,31 +54,41 @@ export default function Notifications() {
     return () => unsubscribeAuth();
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
+useEffect(() => {
+  if (!user) return;
 
-    const notificationsRef = collection(db, "notifications");
-    const q = query(
-      notificationsRef,
-      where("recipientId", "==", user.uid)
-    );
+  const notificationsRef = collection(db, "notifications");
+  const q = query(notificationsRef, where("recipientId", "==", user.uid));
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const fetchedNotifications = [];
+  const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+    const notificationPromises = querySnapshot.docs.map(async (docSnap) => {
+      const data = docSnap.data();
 
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.type === "pollEnded" && data.pollOwnerId !== user.uid) return;
-        fetchedNotifications.push({ id: doc.id, ...data });
-      });
+      if (data.type === "pollEnded" && data.pollOwnerId !== user.uid) return null;
 
-      fetchedNotifications.sort((a, b) => b.timestamp - a.timestamp);
-      setNotifications(fetchedNotifications);
-      setLoading(false);
+      // Check if poll exists
+      if (data.pollId) {
+        const pollDoc = await getDoc(doc(db, "polls", data.pollId));
+        if (!pollDoc.exists()) {
+          await deleteDoc(docSnap.ref);
+          return null;
+        }
+      }
+
+      return { id: docSnap.id, ...data };
     });
 
-    return () => unsubscribe();
-  }, [user]);
+    const results = await Promise.all(notificationPromises);
+    const validNotifications = results.filter((n) => n !== null);
+    validNotifications.sort((a, b) => b.timestamp - a.timestamp);
+
+    setNotifications(validNotifications);
+    setLoading(false); // ✅ Only this one should remain
+  });
+
+  return () => unsubscribe();
+}, [user]);
+
 
   const markAsRead = async (notificationId) => {
     try {
@@ -159,10 +173,20 @@ export default function Notifications() {
     }
   };
 
-  const openMenu = (notification) => {
-    setSelectedNotification(notification);
-    setMenuVisible(true);
-  };
+const openMenu = (notificationId) => {
+  const ref = menuButtonRefs.current[notificationId];
+  if (ref) {
+    ref.measureInWindow((x, y, width, height) => {
+      setMenuPosition({
+        x: x - 100, // adjust horizontal offset
+        y: y + height + 5, // offset below the button
+      });
+      setSelectedNotification(notifications.find(n => n.id === notificationId));
+      setMenuVisible(true);
+    });
+  }
+};
+
 
   const closeMenu = () => {
     setMenuVisible(false);
@@ -221,6 +245,7 @@ export default function Notifications() {
                         !notification.read && styles.unreadNotification,
                       ]}
                       onPress={() => handleNotificationPress(notification)}
+                      activeOpacity={0.7}
                     >
                       <View style={styles.notificationIcon}>
                         <AntDesign
@@ -238,12 +263,14 @@ export default function Notifications() {
                         </Text>
                       </View>
                       {!notification.read && <View style={styles.unreadIndicator} />}
-                      <TouchableOpacity 
-                        style={styles.menuButton}
-                        onPress={() => openMenu(notification)}
-                      >
-                        <Entypo name="dots-three-vertical" size={16} color={colors.GRAY} />
-                      </TouchableOpacity>
+                      <TouchableOpacity
+  ref={(ref) => (menuButtonRefs.current[notification.id] = ref)}
+  style={styles.menuButton}
+  onPress={() => openMenu(notification.id)}
+>
+  <Entypo name="dots-three-vertical" size={16} color={colors.GRAY} />
+</TouchableOpacity>
+
                     </TouchableOpacity>
                   ))}
                 </>
@@ -258,9 +285,10 @@ export default function Notifications() {
         transparent={true}
         visible={menuVisible}
         onRequestClose={closeMenu}
+        animationType="fade"
       >
         <Pressable style={styles.modalOverlay} onPress={closeMenu}>
-          <View style={styles.menuContainer}>
+          <View style={[styles.menuContainer, { top: menuPosition.y, left: menuPosition.x }]}>
             <TouchableOpacity 
               style={styles.menuItem}
               onPress={() => {
@@ -376,8 +404,6 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   menuContainer: {
@@ -386,9 +412,11 @@ const styles = StyleSheet.create({
     padding: 10,
     width: 150,
     position: 'absolute',
-    right: 20,
-    top: 100,
     elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
   menuItem: {
     flexDirection: 'row',
