@@ -38,6 +38,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { registerScrollToTop } from '../../utils/scrollManager';
 import { useRef } from "react";
 import { color } from "react-native-elements/dist/helpers";
+import { Colors } from "react-native/Libraries/NewAppScreen";
 export default function HomeScreen() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -300,6 +301,8 @@ React.useEffect(() => {
               creatorProfilePic,
               creatorName: pollData.creatorName || "Unknown",
               createdAt: pollData.createdAt?.toDate() || new Date(createdAt),
+              isPublic: pollData.isPublic !== false, // Default to true if not set
+              realTimeResults: pollData.realTimeResults === true,
             };
           })
         );
@@ -883,6 +886,9 @@ const formatDateLabel = (date) => {
         return { bg: 'white', main: colors.BLUE, sec: colors.LIGHTBLUE }; // Default theme
     }
   };
+const showResults = (item.realTimeResults === true && !item.isExpired) || 
+                   item.isExpired ||
+                   (user?.uid === item.createdBy);
   const theme = getThemeColors();
   return (
     <View
@@ -1049,6 +1055,15 @@ const formatDateLabel = (date) => {
           >
             {option.text}
           </Text>
+          {showResults && (
+      <Text style={{
+        marginLeft: 10,
+        fontWeight: 'bold',
+        color: theme.main
+      }}>
+        {option.votes || 0}
+      </Text>
+    )}
         </TouchableOpacity>
       ))}
 
@@ -1172,6 +1187,7 @@ const PollResultItem = ({ item, handleReaction, openPollModal, user, router }) =
   const maxVotes = Math.max(...item.options.map((option) => option.votes || 0));
 const formatDateLabel = (date) => {
   if (!date) return 'Unknown date';
+  const canViewResults = item.isPublic || user?.uid === item.createdBy;
   
   // Handle Firebase Timestamp, JavaScript Date, or ISO string
   const postDate = typeof date.toDate === 'function' 
@@ -1237,6 +1253,215 @@ const formatDateLabel = (date) => {
     }
   };
   const theme = getThemeColors();
+    const canViewResults = item.isPublic !== false || user?.uid === item.createdBy;
+
+  if (!canViewResults) {
+      return (
+    <View
+      style={{
+        backgroundColor: theme.bg,
+        padding: 20,
+        paddingBottom: 30,
+        marginBottom: 25,
+        borderRadius: 10,
+        shadowColor: "#000",
+        shadowOpacity: 0.1,
+        shadowRadius: 5,
+        borderWidth: 4,
+        borderColor: "white",
+        elevation: 2,
+        shadowColor: "gray",
+      }}
+    >
+      {/* Poll Header */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 5,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Image
+            source={
+              item.creatorProfilePic
+                ? { uri: item.creatorProfilePic }
+                : require("./../../assets/images/default.png")
+            }
+            style={{ width: 35, height: 35, borderRadius: 20, marginRight: 10 }}
+          />
+          <View>
+            <Text style={{ fontSize: 14, fontWeight: 'bold', color: colors.GRAY }}>
+              {item.creatorName}
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.GRAY, marginTop: 2 }}>
+              {formatDateLabel(item.createdAt)}
+            </Text>
+          </View>
+        </View>
+        <View
+          style={{
+            backgroundColor: theme.main,
+            borderRadius: 20,
+            paddingVertical: 5,
+            paddingHorizontal: 10,
+            minWidth: 80,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "white", fontSize: 14 }}>
+            {totalVotes} Votes
+          </Text>
+        </View>
+      </View>
+
+      {/* Poll Content */}
+      <Text style={{ fontSize: 16, fontWeight: "bold", marginTop: 5 }}>
+        {item.title}
+      </Text>
+      {item.description && (
+        <Text style={{ fontSize: 14, marginVertical: 5 }}>
+          {item.description}
+        </Text>
+      )}
+      {item.imageBase64 && (
+        <Image 
+          source={{ uri: item.imageBase64 }}
+          style={{
+            width: '100%',
+            height: 200,
+            borderRadius: 10,
+            marginTop: 10,
+            resizeMode: 'cover'
+          }}
+        />
+      )}
+      <Text style={{ fontSize: 14, color: "red", marginVertical: 5 }}>
+        Poll has ended
+      </Text>
+
+      {/* Results Section - Only shown if user can view results */}
+      {canViewResults ? (
+        item.options?.map((option, index) => {
+          const optionVotes = option.votes || 0;
+          const percentage =
+            totalVotes > 0 ? ((optionVotes / totalVotes) * 100).toFixed(2) : 0;
+
+          return (
+            <View key={index} style={{ marginTop: 10 }}>
+              <View style={styles.progressBarContainer}>
+                <View style={styles.progressBarWrapper}>
+                  <View style={styles.progressBarContainer}>
+                    <View
+                      style={[
+                        styles.progressBar,
+                        {
+                          width: `${percentage}%`,
+                          backgroundColor: theme.sec,
+                        },
+                      ]}
+                    />
+                    <View style={styles.progressTextContainer}>
+                      <Text
+                        style={[styles.progressOption, { flex: 1 }]}
+                        numberOfLines={2}
+                      >
+                        {option.text}
+                      </Text>
+                      <Text style={styles.progressPercentage}>{percentage}%</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          );
+        })
+      ) : (
+        <View style={{
+          backgroundColor: colors.LIGHT,
+          borderRadius: 8,
+          padding: 15,
+          marginTop: 15,
+          elevation: 2,
+          shadowColor: colors.LIGHTGRAY
+        }}>
+          <Text style={{ 
+            fontSize: 14, 
+            color: theme.main, 
+            textAlign: 'center'
+          }}>
+            Results are private - only the poll creator can view them
+          </Text>
+        </View>
+      )}
+
+      {/* Reactions and Comments Section - Always visible */}
+      <View style={{
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 15,
+        paddingHorizontal: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+        paddingTop: 20,
+      }}>
+        {/* Like Button */}
+        <TouchableOpacity 
+          style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}
+          onPress={() => handleReaction(item.id, "like")}
+        >
+          <AntDesign
+            name={item.likes?.includes(user?.uid) ? "like1" : "like2"}
+            size={20}
+            color={item.likes?.includes(user?.uid) ? theme.main : colors.LIGHTGRAY}
+          />
+          <Text style={{
+            marginLeft: 5,
+            fontSize: 14,
+            color: item.likes?.includes(user?.uid) ? theme.main : colors.LIGHTGRAY
+          }}>
+            {item.likes?.length || 0}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Dislike Button */}
+        <TouchableOpacity 
+          style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}
+          onPress={() => handleReaction(item.id, "dislike")}
+        >
+          <AntDesign
+            name={item.dislikes?.includes(user?.uid) ? "dislike1" : "dislike2"}
+            size={20}
+            color={item.dislikes?.includes(user?.uid) ? theme.main : colors.LIGHTGRAY}
+          />
+          <Text style={{
+            marginLeft: 5,
+            fontSize: 14,
+            color: item.dislikes?.includes(user?.uid) ? theme.main : colors.LIGHTGRAY
+          }}>
+            {item.dislikes?.length || 0}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Comment Button */}
+        <TouchableOpacity 
+          style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 100 }}
+          onPress={() => router.push(`../pages/comments?pollId=${item.id}`)}
+        >
+          <AntDesign
+            name="message1"
+            size={20}
+            color={colors.LIGHTGRAY}
+          />
+          <Text style={{ marginLeft: 5, fontSize: 14, color: colors.LIGHTGRAY }}>
+            Comments
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
   return (
     <View
       style={{
@@ -1516,4 +1741,17 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
   },
+    privateResultsText: {
+    fontSize: 14,
+    color: colors.dark,
+    textAlign: colors.DARK,
+    marginVertical: 20,
+    paddingHorizontal: 20
+  },
+  voteCountText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.DARK,
+    marginLeft: 10
+  }
 });

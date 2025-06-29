@@ -23,7 +23,8 @@ const [selectedTheme, setSelectedTheme] = useState(null); // null means default
 const [image, setImage] = useState(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const totalSteps = 4;
-
+const [isPublic, setIsPublic] = useState(true); // Default to public
+const [realTimeResults, setRealTimeResults] = useState(true); // Default to showing real-time results
 const handleImagePick = async () => {
   try {
     setIsUploadingImage(true);
@@ -176,7 +177,9 @@ const handleImagePick = async () => {
         createdBy: user.uid,
         creatorName: username,
         theme: selectedTheme,
-        imageBase64: image || null
+        imageBase64: image || null,
+        isPublic, // Add this
+  realTimeResults, // Add this
       };
       const pollDataSize = JSON.stringify(pollData).length;
     if (pollDataSize > 900000) {  // ~900KB to be safe
@@ -372,29 +375,83 @@ case 1:
         );
 
       case 3:
-        return (
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Poll Duration:</Text>
-            <View style={styles.durationContainer}>
-              <TextInput
-                style={styles.durationInput}
-                placeholder="Enter duration"
-                keyboardType="numeric"
-                value={duration.value}
-                onChangeText={(text) => setDuration((prev) => ({ ...prev, value: text }))}
-              />
-              <Picker
-                style={styles.durationPicker}
-                selectedValue={duration.unit}
-                onValueChange={(itemValue) => setDuration((prev) => ({ ...prev, unit: itemValue }))}
-              >
-                <Picker.Item label="Minutes" value="minutes" />
-                <Picker.Item label="Hours" value="hours" />
-                <Picker.Item label="Days" value="days" />
-              </Picker>
-            </View>
-          </View>
-        );
+  return (
+    <View style={styles.inputContainer}>
+      <Text style={styles.label}>Poll Duration:</Text>
+      <View style={styles.durationContainer}>
+        <TextInput
+          style={styles.durationInput}
+          placeholder="Enter duration"
+          keyboardType="numeric"
+          value={duration.value}
+          onChangeText={(text) => setDuration((prev) => ({ ...prev, value: text }))}
+        />
+        <Picker
+          style={styles.durationPicker}
+          selectedValue={duration.unit}
+          onValueChange={(itemValue) => setDuration((prev) => ({ ...prev, unit: itemValue }))}
+        >
+          <Picker.Item label="Minutes" value="minutes" />
+          <Picker.Item label="Hours" value="hours" />
+          <Picker.Item label="Days" value="days" />
+        </Picker>
+      </View>
+
+      <Text style={styles.label}>Final Results Visibility:</Text>
+      <View style={styles.visibilityContainer}>
+        <TouchableOpacity 
+          style={[styles.visibilityButton, isPublic && styles.selectedVisibility]}
+          onPress={() => setIsPublic(true)}
+        >
+          <Ionicons 
+            name={isPublic ? "radio-button-on" : "radio-button-off"} 
+            size={20} 
+            color={isPublic ? colors.BLUE : colors.GRAY} 
+          />
+          <Text style={styles.visibilityText}>Public (Anyone can see results)</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.visibilityButton, !isPublic && styles.selectedVisibility]}
+          onPress={() => setIsPublic(false)}
+        >
+          <Ionicons 
+            name={!isPublic ? "radio-button-on" : "radio-button-off"} 
+            size={20} 
+            color={!isPublic ? colors.BLUE : colors.GRAY} 
+          />
+          <Text style={styles.visibilityText}>Private (Only you can see results)</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.label}>Real-Time Results</Text>
+      <View style={styles.visibilityContainer}>
+        <TouchableOpacity 
+          style={[styles.visibilityButton, realTimeResults && styles.selectedVisibility]}
+          onPress={() => setRealTimeResults(true)}
+        >
+          <Ionicons 
+            name={realTimeResults ? "radio-button-on" : "radio-button-off"} 
+            size={20} 
+            color={realTimeResults ? colors.BLUE : colors.GRAY} 
+          />
+          <Text style={styles.visibilityText}>On (Show live results)</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.visibilityButton, !realTimeResults && styles.selectedVisibility]}
+          onPress={() => setRealTimeResults(false)}
+        >
+          <Ionicons 
+            name={!realTimeResults ? "radio-button-on" : "radio-button-off"} 
+            size={20} 
+            color={!realTimeResults ? colors.BLUE : colors.GRAY} 
+          />
+          <Text style={styles.visibilityText}>Off (Hide results until the poll ends)</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
       case 4:
         return (
@@ -793,7 +850,8 @@ picker: {
   },
   durationContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    marginBottom: 50
   },
   durationInput: {
     width: '48%',
@@ -1013,5 +1071,24 @@ removeImageButton: {
   height: 30,
   alignItems: 'center',
   justifyContent: 'center',
+},
+visibilityContainer: {
+  marginBottom: 20,
+},
+visibilityButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingVertical: 12,
+  paddingHorizontal: 15,
+  borderRadius: 8,
+  marginBottom: 8,
+  backgroundColor: '#f5f5f5',
+},
+selectedVisibility: {
+  backgroundColor: '#e3f2fd',
+},
+visibilityText: {
+  marginLeft: 10,
+  fontSize: 14,
 },
 };

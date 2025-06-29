@@ -25,6 +25,7 @@ import {
   onSnapshot,
   getDoc,
   arrayUnion,
+  getDocs,
 } from "firebase/firestore";
 import { AntDesign, Entypo, MaterialIcons, Feather } from "@expo/vector-icons";
 import colors from "../../constant/colors";
@@ -43,6 +44,7 @@ export default function CommentsPage() {
   const [selectedOptions, setSelectedOptions] = useState({});
   const [loadingStates, setLoadingStates] = useState({});
   const [refreshing, setRefreshing] = useState(false);
+
 const handleRefresh = async () => {
   setRefreshing(true);
   try {
@@ -139,6 +141,8 @@ const handleRefresh = async () => {
             dislikes: pollData.dislikes || [],
             isExpired,
             userVotedOption,
+            isPublic: pollData.isPublic !== false, // Default to true if not set
+            realTimeResults: pollData.realTimeResults !== false
           });
 
           if (userVotedOption) {
@@ -504,7 +508,8 @@ if (newComment.length > 500) {
   };
 
   const theme = getThemeColors();
-
+const canViewResults = poll?.isPublic || user?.uid === poll?.createdBy;
+const showResults = poll?.realTimeResults || poll?.isExpired || !poll?.isPublic;
   if (loading || !poll) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
@@ -520,19 +525,19 @@ if (newComment.length > 500) {
         <TouchableOpacity onPress={() => router.back()}>
           <AntDesign name="arrowleft" size={24} color={colors.DARK} />
         </TouchableOpacity>
-
       </View>
 
       {/* Scrollable content */}
       <ScrollView style={{ flex: 1 }}
-      refreshControl={
-    <RefreshControl
-      refreshing={refreshing}
-      onRefresh={handleRefresh}
-      colors={[colors.BLUE]} // Customize as needed
-      tintColor={colors.BLUE} // For iOS
-    />
-  }>
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.BLUE]}
+            tintColor={colors.BLUE}
+          />
+        }
+      >
         {/* Poll Preview */}
         <View style={[styles.pollContainer, { backgroundColor: theme.bg }]}>
           <View style={styles.pollHeader}>
@@ -574,6 +579,11 @@ if (newComment.length > 500) {
           {/* Poll Options */}
           {poll.options?.map((option, index) => {
             if (poll.isExpired) {
+              // For expired polls, show results if allowed
+              if (!canViewResults) {
+                return null; // Skip rendering options if results are private
+              }
+
               const optionVotes = option.votes || 0;
               const percentage = poll.totalVotes > 0 
                 ? ((optionVotes / poll.totalVotes) * 100).toFixed(2) 
@@ -608,11 +618,12 @@ if (newComment.length > 500) {
                 </View>
               );
             } else {
+              // For active polls
               return (
                 <TouchableOpacity
                   key={index}
                   onPress={() => !poll.userVotedOption && selectOption(poll.id, option.text)}
-                  disabled={!!poll.userVotedOption}  // Explicit boolean conversion
+                  disabled={!!poll.userVotedOption}
                   style={[styles.pollOption, { 
                     backgroundColor: poll.userVotedOption === option.text || selectedOptions[poll.id] === option.text 
                       ? theme.sec 
@@ -626,20 +637,45 @@ if (newComment.length > 500) {
                       : 'transparent'
                   }]} />
                   <Text style={styles.optionText}>{option.text}</Text>
+                  {showResults && (
+                    <Text style={{ 
+                      marginLeft: 10,
+                      fontWeight: 'bold',
+                      color: theme.main
+                    }}>
+                      {option.votes || 0}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               );
             }
           })}
 
+          {/* Private results message for expired polls */}
+          {poll.isExpired && !canViewResults && (
+            <View style={{
+                      backgroundColor: colors.LIGHT,
+                      borderRadius: 8,
+                      padding: 15,
+                      marginTop: 15,
+                      elevation: 2,
+                      shadowColor: colors.LIGHTGRAY
+                    }}>
+                      <Text style={{ 
+                        fontSize: 14, 
+                        color: theme.main, 
+                        textAlign: 'center'
+                      }}>
+                Results are private - only the poll creator can view them
+              </Text>
+            </View>
+          )}
+
           {/* Voting Buttons */}
-          {poll.isExpired ? (
-            <Text style={[styles.pollTimerText, { color: 'red', textAlign: 'center', height:0 }]}>
-              
-            </Text>
-          ) : !poll.userVotedOption ? (
+          {poll.isExpired ? null : !poll.userVotedOption ? (
             <TouchableOpacity
               onPress={votePoll}
-              disabled={!selectedOptions[poll.id] || !!loadingStates[poll.id]}  // Explicit boolean conversion
+              disabled={!selectedOptions[poll.id] || !!loadingStates[poll.id]}
               style={{
                 backgroundColor: theme.main,
                 padding: 10,
@@ -656,7 +692,7 @@ if (newComment.length > 500) {
           ) : (
             <TouchableOpacity
               onPress={clearVote}
-              disabled={!!loadingStates[poll.id]}  // Explicit boolean conversion
+              disabled={!!loadingStates[poll.id]}
               style={{
                 backgroundColor: "gray",
                 padding: 10,
@@ -672,7 +708,7 @@ if (newComment.length > 500) {
             </TouchableOpacity>
           )}
 
-          {/* Reactions */}
+          {/* Reactions - Always visible */}
           <View style={styles.pollStats}>
             <View style={styles.reactionContainer}>
               <TouchableOpacity 
@@ -704,9 +740,10 @@ if (newComment.length > 500) {
             </View>
           </View>
         </View>
-        {/* Comments List */}
+
+        {/* Comments List - Always visible */}
         <View style={{ paddingHorizontal: 15, paddingBottom: 80 }}>
-            <Text style={styles.headerTitle}>Comments</Text>
+          <Text style={styles.headerTitle}>Comments</Text>
           {comments.length === 0 ? (
             <View style={styles.noComments}>
               <Text style={styles.noCommentsText}>No comments yet</Text>
@@ -765,55 +802,54 @@ if (newComment.length > 500) {
         </View>
       </ScrollView>
 
-      {/* Comment Input */}
-      {/* Comment Input */}
-<View style={styles.commentInputContainer}>
-  <View style={{ flex: 1 }}>
-    <TextInput
-      placeholder="Write a comment..."
-      value={newComment}
-      onChangeText={setNewComment}
-      multiline
-      maxLength={500}
-      style={styles.commentInput}
-    />
-    <Text style={styles.charCounter}>
-      {newComment.length}/500
-    </Text>
-  </View>
-  {editingCommentId ? (
-    <View style={styles.editButtons}>
-      <TouchableOpacity
-        onPress={cancelEdit}
-        style={[styles.commentButton, styles.cancelButton]}
-      >
-        <Text style={styles.buttonText}>Cancel</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={submitComment}
-        disabled={!newComment.trim()}
-        style={[
-          styles.commentButton,
-          styles.submitButton,
-          (!newComment.trim() || newComment.length > 500) && styles.disabledButton,
-        ]}
-      >
-        <Text style={styles.buttonText}>Update</Text>
-      </TouchableOpacity>
-    </View>
-  ) : (
-    <TouchableOpacity
-      onPress={submitComment}
-      disabled={!newComment.trim() || newComment.length > 500}
-      style={[
-        styles.commentSubmitButton,
-        (!newComment.trim() || newComment.length > 500) && styles.commentSubmitButtonDisabled,
-      ]}
-    >
-      <Text style={styles.commentSubmitText}>Post</Text>
-    </TouchableOpacity>
-  )}
-</View>
+      {/* Comment Input - Always visible */}
+      <View style={styles.commentInputContainer}>
+        <View style={{ flex: 1 }}>
+          <TextInput
+            placeholder="Write a comment..."
+            value={newComment}
+            onChangeText={setNewComment}
+            multiline
+            maxLength={500}
+            style={styles.commentInput}
+          />
+          <Text style={styles.charCounter}>
+            {newComment.length}/500
+          </Text>
+        </View>
+        {editingCommentId ? (
+          <View style={styles.editButtons}>
+            <TouchableOpacity
+              onPress={cancelEdit}
+              style={[styles.commentButton, styles.cancelButton]}
+            >
+              <Text style={styles.buttonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={submitComment}
+              disabled={!newComment.trim()}
+              style={[
+                styles.commentButton,
+                styles.submitButton,
+                (!newComment.trim() || newComment.length > 500) && styles.disabledButton,
+              ]}
+            >
+              <Text style={styles.buttonText}>Update</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            onPress={submitComment}
+            disabled={!newComment.trim() || newComment.length > 500}
+            style={[
+              styles.commentSubmitButton,
+              (!newComment.trim() || newComment.length > 500) && styles.commentSubmitButtonDisabled,
+            ]}
+          >
+            <Text style={styles.commentSubmitText}>Post</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 }
