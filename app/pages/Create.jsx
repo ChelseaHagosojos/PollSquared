@@ -7,7 +7,8 @@ import { Picker } from '@react-native-picker/picker';
 import { auth, db, storage } from '../../firebase/firebaseConfig';
 import colors from '../../constant/colors';
 import * as ImagePicker from 'expo-image-picker';
-import DatePicker from 'react-native-date-picker';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { Platform } from 'react-native';
 export default function Create() {
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -19,6 +20,21 @@ export default function Create() {
   const [isLoading, setIsLoading] = useState(false);
 const [selectedTheme, setSelectedTheme] = useState(null); // null means default
 const [datePickerOpen, setDatePickerOpen] = useState(false);
+
+const openAndroidDatePicker = () => {
+  DateTimePickerAndroid.open({
+    value: duration.scheduledTime || new Date(),
+    mode: 'datetime',
+    is24Hour: true,
+    minimumDate: new Date(),
+    onChange: (event, selectedDate) => {
+      if (event.type === 'set' && selectedDate) {
+        setDuration(prev => ({ ...prev, scheduledTime: selectedDate }));
+      }
+    },
+  });
+};
+
 const [duration, setDuration] = useState({ 
   value: '', 
   unit: 'hours',
@@ -469,8 +485,14 @@ case 3:
           {/* Show date/time picker for scheduled polls */}
           <View style={styles.scheduleContainer}>
             <Text style={styles.label}>Schedule Date & Time:</Text>
-<TouchableOpacity 
-  onPress={() => setDatePickerOpen(true)}
+            <TouchableOpacity 
+  onPress={() => {
+    if (Platform.OS === 'android') {
+      openAndroidDatePicker();
+    } else {
+      setDatePickerOpen(true); // iOS only
+    }
+  }}
   style={styles.datePickerButton}
 >
   <Text style={styles.datePickerText}>
@@ -481,22 +503,37 @@ case 3:
   <Ionicons name="calendar" size={20} color={colors.BLUE} />
 </TouchableOpacity>
 
-<DatePicker
-  modal
-  open={datePickerOpen}
-  date={duration.scheduledTime || new Date()}
-  minimumDate={new Date()}
-  onConfirm={(date) => {
-    setDatePickerOpen(false);
-    setDuration(prev => ({ 
-      ...prev, 
-      scheduledTime: date 
-    }));
-  }}
-  onCancel={() => {
-    setDatePickerOpen(false);
-  }}
-/>
+
+{datePickerOpen && (
+  <DateTimePicker
+    value={duration.scheduledTime || new Date()}
+    mode="datetime"
+    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+    minimumDate={new Date()}
+    onChange={(event, selectedDate) => {
+      setDatePickerOpen(false);
+      
+      // Handle Android and iOS differently
+      if (Platform.OS === 'android') {
+        // On Android, we need to check if the user pressed "OK" or canceled
+        if (event.type === 'set' && selectedDate) {
+          setDuration(prev => ({ 
+            ...prev, 
+            scheduledTime: selectedDate 
+          }));
+        }
+      } else {
+        // On iOS, the picker doesn't have a cancel button, so we always get a date
+        if (selectedDate) {
+          setDuration(prev => ({ 
+            ...prev, 
+            scheduledTime: selectedDate 
+          }));
+        }
+      }
+    }}
+  />
+)}
           </View>
 
           {/* Add toggle for preview visibility */}
@@ -1191,4 +1228,5 @@ datePickerText: {
   fontSize: 16,
   color: colors.DARK,
 },
+
 };
