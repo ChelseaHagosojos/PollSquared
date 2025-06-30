@@ -56,7 +56,7 @@ export default function HomeScreen() {
   const [searchType, setSearchType] = useState("polls"); // 'polls' or 'users'
   const flatListRef = useRef(null);
   const [refreshing, setRefreshing] = useState(false);
-
+const [initialLoading, setInitialLoading] = useState(true);
 
 const openPollModal = (poll) => {
   router.push(`/comments?pollId=${poll.id}`);
@@ -196,6 +196,7 @@ React.useEffect(() => {
 
     setUser(currentUser);
     setLoading(true);
+    setInitialLoading(true);
 
     try {
       // Fetch user data from Firestore
@@ -319,6 +320,7 @@ React.useEffect(() => {
         // Separate active and inactive polls
         setActivePolls(fetchedPolls.filter((poll) => !poll.isExpired));
         setInactivePolls(fetchedPolls.filter((poll) => poll.isExpired));
+        setInitialLoading(false);
       });
 
       return () => unsubscribePolls();
@@ -602,18 +604,20 @@ const getFilteredAndSortedPolls = () => {
     {searchVisible ? (
       <View style={{ 
         flexDirection: 'row', 
-        alignItems: 'center',
-        backgroundColor: 'white',
-        borderRadius: 100,
-        paddingHorizontal: 5,
-        paddingVertical: 5,
+      alignItems: 'center',
+      backgroundColor: 'white',
+      borderRadius: 100,
+      paddingHorizontal: 15,
+      paddingVertical: 8,
+      height: 45, // Fixed height
+      minWidth: 200, // Minimum width
       }}>
         <TextInput
   style={{
-    flex: 1,
-    color: 'black',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+     flex: 1,
+          color: 'black',
+          paddingVertical: 0, // Remove extra padding
+          fontSize: 16,
   }}
   placeholder="Search polls..."
   value={searchQuery}
@@ -745,63 +749,63 @@ const getFilteredAndSortedPolls = () => {
           </View>
         </View>
 
-        {/* Combined Polls Section */}
-        {filteredPolls.length > 0 ? (
+{initialLoading ? (
+  <View style={{ flex: 1, justifyContent: "center", alignItems: "center", marginTop: 20 }}>
+    <ActivityIndicator size="large" color={colors.BLUE} />
+    <Text style={{ marginTop: 10, color: colors.GRAY }}>Loading polls...</Text>
+  </View>
+) : filteredPolls.length > 0 ? (
           <FlatList
-          ref={flatListRef}
-          key={`${filter}-${sort}`}
-            data={filteredPolls}
-            keyExtractor={(item) => item.id}
-            extraData={[filter, sort, searchQuery, refresh]}
-            refreshControl={
-    <RefreshControl
-      refreshing={refreshing}
-      onRefresh={onRefresh}
-      colors={[colors.BLUE]}
-      tintColor={colors.BLUE}
-    />
-  }
-            renderItem={({ item }) =>
-              item.isExpired ? (
-                <PollResultItem
-                  item={item}
-                  user={user}
-                  router={router}
-                  userHasVoted={item.userVotedOption !== null}
-                  selectedOption={selectedOptions[item.id]}
-                  onSelectOption={selectOption}
-                  onVote={votePoll}
-                  onClearVote={clearVote}
-                  loadingStates={loadingStates}
-                  handleReaction={handleReaction}
-                />
-              ) : (
-                <PollItem
-                  item={item}
-                  user={user}
-                  router={router}
-                  userHasVoted={item.userVotedOption !== null}
-                  selectedOption={selectedOptions[item.id]}
-                  onSelectOption={selectOption}
-                  onVote={votePoll}
-                  onClearVote={clearVote}
-                  loadingStates={loadingStates}
-                  handleReaction={handleReaction}
-                />
-              )
-            }
-          />
+    ref={flatListRef}
+    key={`${filter}-${sort}`}
+    data={filteredPolls}
+    keyExtractor={(item) => item.id}
+    extraData={[filter, sort, searchQuery, refresh]}
+    refreshControl={
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        colors={[colors.BLUE]}
+        tintColor={colors.BLUE}
+      />
+    }
+    renderItem={({ item }) => (
+      item.isExpired ? (
+        <PollResultItem
+          item={item}
+          user={user}
+          router={router}
+          userHasVoted={item.userVotedOption !== null}
+          selectedOption={selectedOptions[item.id]}
+          onSelectOption={selectOption}
+          onVote={votePoll}
+          onClearVote={clearVote}
+          loadingStates={loadingStates}
+          handleReaction={handleReaction}
+        />
+      ) : (
+        <PollItem
+          item={item}
+          user={user}
+          router={router}
+          userHasVoted={item.userVotedOption !== null}
+          selectedOption={selectedOptions[item.id]}
+          onSelectOption={selectOption}
+          onVote={votePoll}
+          onClearVote={clearVote}
+          loadingStates={loadingStates}
+          handleReaction={handleReaction}
+        />
+      )
+    )}
+  />
         ) : (
-          <Text
-            style={{
-              textAlign: "center",
-              fontSize: 16,
-              color: colors.GRAY,
-              marginTop: 10,
-            }}
-          >
-            No polls match your criteria.
-          </Text>
+  <View style={{ flex: 1, justifyContent: "center", alignItems: "center", marginTop: 20 }}>
+    <MaterialCommunityIcons name="poll" size={40} color={colors.GRAY} />
+    <Text style={{ marginTop: 10, fontSize: 16, color: colors.GRAY }}>
+      No polls match your criteria.
+    </Text>
+  </View>
         )}
       </View>
     </View>
