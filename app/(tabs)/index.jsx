@@ -346,85 +346,87 @@ React.useEffect(() => {
     setRefresh((prev) => !prev); // Force re-render
   };
 
-  const votePoll = async (pollId) => {
-    if (!user) return;
+const votePoll = async (pollId) => {
+  if (!user) return;
 
-    setLoadingStates((prev) => ({ ...prev, [pollId]: true }));
+  setLoadingStates((prev) => ({ ...prev, [pollId]: true }));
 
-    const selectedOption = selectedOptions[pollId];
-    if (!selectedOption) {
-      alert("Please select an option before submitting.");
+  const selectedOption = selectedOptions[pollId];
+  if (!selectedOption) {
+    alert("Please select an option before submitting.");
+    setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
+    return;
+  }
+
+  try {
+    const pollRef = doc(db, "polls", pollId);
+    const pollSnap = await getDoc(pollRef);
+
+    if (!pollSnap.exists()) {
+      alert("Poll does not exist.");
       setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
       return;
     }
 
-    try {
-      const pollRef = doc(db, "polls", pollId);
-      const pollSnap = await getDoc(pollRef);
+    const pollData = pollSnap.data();
 
-      if (!pollSnap.exists()) {
-        alert("Poll does not exist.");
-        setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
-        return;
-      }
-
-      const pollData = pollSnap.data();
-
-      if (pollData.votes?.some((vote) => vote.userId === user.uid)) {
-        alert("You have already voted in this poll.");
-        setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
-        return;
-      }
-
-      const updatedOptions = pollData.options.map((option) =>
-        option.text === selectedOption
-          ? { ...option, votes: option.votes + 1 }
-          : option
-      );
-
-      await updateDoc(pollRef, {
-        votes: arrayUnion({ userId: user.uid, option: selectedOption }),
-        options: updatedOptions,
-        totalVotes: (pollData.totalVotes || 0) + 1,
-      });
-
-      // Send notification to poll creator
-      if (pollData.createdBy !== user.uid) {
-        await sendNotification({
-          recipientId: pollData.createdBy,
-          senderId: user.uid,
-          senderName: username,
-          pollId: pollId,
-          pollTitle: pollData.title,
-          type: "vote",
-        });
-      }
-
-      // Re-fetch updated poll data
-      const updatedPollSnap = await getDoc(pollRef);
-      const updatedPollData = updatedPollSnap.data();
-
-      setActivePolls((prevPolls) =>
-        prevPolls.map((poll) => {
-          if (poll.id === pollId) {
-            return {
-              ...updatedPollData,
-              id: pollId,
-              userVotedOption: selectedOption,
-              remainingTime: poll.remainingTime,
-              creatorProfilePic: poll.creatorProfilePic,
-            };
-          }
-          return poll;
-        })
-      );
-    } catch (error) {
-      console.error("Error voting:", error);
-      alert("Failed to submit vote.");
-    } finally {
+    if (pollData.votes?.some((vote) => vote.userId === user.uid)) {
+      alert("You have already voted in this poll.");
       setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
+      return;
     }
-  };
+
+    // Create updated options with incremented vote count
+    const updatedOptions = pollData.options.map((option) => {
+      if (option.text === selectedOption) {
+        return {
+          ...option,
+          votes: (option.votes || 0) + 1 // Ensure we start from 0 if votes is undefined
+        };
+      }
+      return option;
+    });
+
+    await updateDoc(pollRef, {
+      votes: arrayUnion({ userId: user.uid, option: selectedOption }),
+      options: updatedOptions,
+      totalVotes: (pollData.totalVotes || 0) + 1,
+    });
+
+    // Send notification to poll creator
+    if (pollData.createdBy !== user.uid) {
+      await sendNotification({
+        recipientId: pollData.createdBy,
+        senderId: user.uid,
+        senderName: username,
+        pollId: pollId,
+        pollTitle: pollData.title,
+        type: "vote",
+      });
+    }
+
+    // Update local state
+    setActivePolls((prevPolls) =>
+      prevPolls.map((poll) => {
+        if (poll.id === pollId) {
+          return {
+            ...poll,
+            votes: [...(poll.votes || []), { userId: user.uid, option: selectedOption }],
+            options: updatedOptions,
+            totalVotes: (poll.totalVotes || 0) + 1,
+            userVotedOption: selectedOption,
+          };
+        }
+        return poll;
+      })
+    );
+  } catch (error) {
+    console.error("Error voting:", error);
+    alert("Failed to submit vote.");
+  } finally {
+    setLoadingStates((prev) => ({ ...prev, [pollId]: false }));
+  }
+};
 
   const clearVote = async (pollId) => {
     if (!user) return;
@@ -502,62 +504,62 @@ React.useEffect(() => {
     }
   };
 
-  // Filter and sort the polls
-  const getFilteredAndSortedPolls = () => {
-    let combinedPolls = [...activePolls, ...inactivePolls];
+const getFilteredAndSortedPolls = () => {
+  let combinedPolls = [...activePolls, ...inactivePolls];
 
-    // Apply search filter
-    if (searchQuery) {
+  // Apply search filter
+  if (searchQuery) {
+    combinedPolls = combinedPolls.filter(
+      (poll) =>
+        poll.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        poll.description.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }
+
+  // Apply status filter
+  switch (filter) {
+    case "ongoing":
+      combinedPolls = combinedPolls.filter((poll) => !poll.isExpired);
+      break;
+    case "ended":
+      combinedPolls = combinedPolls.filter((poll) => poll.isExpired);
+      break;
+    case "participated":
       combinedPolls = combinedPolls.filter(
-        (poll) =>
-          poll.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          poll.description.toLowerCase().includes(searchQuery.toLowerCase())
+        (poll) => poll.userVotedOption !== null
       );
-    }
+      break;
+    case "notParticipated":
+      combinedPolls = combinedPolls.filter(
+        (poll) => poll.userVotedOption === null
+      );
+      break;
+    default:
+      // "all" - no filter
+      break;
+  }
 
-    // Apply status filter
-    switch (filter) {
-      case "ongoing":
-        combinedPolls = combinedPolls.filter((poll) => !poll.isExpired);
-        break;
-      case "ended":
-        combinedPolls = combinedPolls.filter((poll) => poll.isExpired);
-        break;
-      case "participated":
-        combinedPolls = combinedPolls.filter(
-          (poll) => poll.userVotedOption !== null
-        );
-        break;
-      case "notParticipated":
-        combinedPolls = combinedPolls.filter(
-          (poll) => poll.userVotedOption === null
-        );
-        break;
-      default:
-        // "all" - no filter
-        break;
-    }
+  // Apply sorting - only re-sort if explicitly sorting by votes
+  switch (sort) {
+    case "newest":
+      combinedPolls.sort((a, b) => b.createdAt - a.createdAt);
+      break;
+    case "oldest":
+      combinedPolls.sort((a, b) => a.createdAt - b.createdAt);
+      break;
+    case "mostVotes":
+      combinedPolls.sort((a, b) => (b.totalVotes || 0) - (a.totalVotes || 0));
+      break;
+    case "leastVotes":
+      combinedPolls.sort((a, b) => (a.totalVotes || 0) - (b.totalVotes || 0));
+      break;
+    default:
+      // Maintain original order for other cases
+      break;
+  }
 
-    // Apply sorting
-    switch (sort) {
-      case "newest":
-        combinedPolls.sort((a, b) => b.createdAt - a.createdAt);
-        break;
-      case "oldest":
-        combinedPolls.sort((a, b) => a.createdAt - b.createdAt);
-        break;
-      case "mostVotes":
-        combinedPolls.sort((a, b) => (b.totalVotes || 0) - (a.totalVotes || 0));
-        break;
-      case "leastVotes":
-        combinedPolls.sort((a, b) => (a.totalVotes || 0) - (b.totalVotes || 0));
-        break;
-      default:
-        break;
-    }
-
-    return combinedPolls;
-  };
+  return combinedPolls;
+};
 
   if (loading) {
     return (

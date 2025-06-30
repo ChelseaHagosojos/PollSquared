@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  Dimensions,
+  TouchableWithoutFeedback,
 } from "react-native";
 import React, { useEffect, useRef, useState } from "react";
 import { auth, db } from "../../firebase/firebaseConfig";
@@ -177,9 +179,17 @@ const openMenu = (notificationId) => {
   const ref = menuButtonRefs.current[notificationId];
   if (ref) {
     ref.measureInWindow((x, y, width, height) => {
+      // Get screen dimensions
+      const screenWidth = Dimensions.get('window').width;
+      
+      // Calculate position - try to keep menu on screen
+      let menuX = x - 100;
+      if (menuX < 10) menuX = 10; // Don't go off left edge
+      if (menuX + 120 > screenWidth) menuX = screenWidth - 130; // Don't go off right edge
+      
       setMenuPosition({
-        x: x - 100, // adjust horizontal offset
-        y: y + height + 5, // offset below the button
+        x: menuX,
+        y: y + height + 5,
       });
       setSelectedNotification(notifications.find(n => n.id === notificationId));
       setMenuVisible(true);
@@ -277,31 +287,37 @@ const openMenu = (notificationId) => {
               )}
             </>
           )}
+           ListFooterComponent={<View style={{ height: 80 }} />}
         />
       )}
 
       {/* Kebab Menu Modal */}
-      <Modal
-        transparent={true}
-        visible={menuVisible}
-        onRequestClose={closeMenu}
-        animationType="fade"
-      >
-        <Pressable style={styles.modalOverlay} onPress={closeMenu}>
-          <View style={[styles.menuContainer, { top: menuPosition.y, left: menuPosition.x }]}>
-            <TouchableOpacity 
-              style={styles.menuItem}
-              onPress={() => {
-                deleteNotification(selectedNotification?.id);
-                closeMenu();
-              }}
-            >
-              <MaterialIcons name="delete" size={20} color={colors.RED} />
-              <Text style={[styles.menuText, { color: colors.RED }]}>Delete</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
+<Modal
+  transparent={true}
+  visible={menuVisible}
+  onRequestClose={closeMenu}
+  animationType="fade"
+>
+  <TouchableWithoutFeedback onPress={closeMenu}>
+    <View style={styles.modalOverlay}>
+      <View style={[styles.menuContainer, { 
+        top: menuPosition.y, 
+        left: menuPosition.x 
+      }]}>
+        <TouchableOpacity 
+          style={styles.menuItem}
+          onPress={() => {
+            deleteNotification(selectedNotification?.id);
+            closeMenu();
+          }}
+        >
+          <MaterialIcons name="delete" size={20} color={colors.RED} />
+          <Text style={[styles.menuText, { color: colors.RED }]}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </TouchableWithoutFeedback>
+</Modal>
     </View>
   );
 }
@@ -400,24 +416,27 @@ const styles = StyleSheet.create({
   },
   menuButton: {
     padding: 5,
-    marginLeft: 5,
+    marginLeft: 'auto', // Push to the right
+  zIndex: 1
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  menuContainer: {
-    backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 10,
-    width: 150,
-    position: 'absolute',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
+menuContainer: {
+  position: 'absolute',
+  backgroundColor: 'white',
+  borderRadius: 8,
+  padding: 10,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 4,
+  elevation: 5,
+  zIndex: 1000, // Ensure it appears above other elements
+  minWidth: 120,
+},
+modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.1)',
+  zIndex: 999,
+},
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',

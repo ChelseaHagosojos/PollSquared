@@ -24,6 +24,7 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp,
+  getDocs,
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../firebase/firebaseConfig';
@@ -47,6 +48,8 @@ export default function PollDetail() {
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [menuVisible, setMenuVisible] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
 
   const getThemeColors = () => {
     switch(poll?.theme) {
@@ -101,7 +104,20 @@ export default function PollDetail() {
       try {
         const pollDoc = await getDoc(doc(db, 'polls', id));
         if (pollDoc.exists()) {
+          
+          
           const pollData = pollDoc.data();
+         let creatorProfilePic = null;
+        let creatorName = pollData.creatorName || "Unknown";
+        
+        if (pollData.createdBy) {  // Changed from creatorId to createdBy
+          const creatorDoc = await getDoc(doc(db, 'users', pollData.createdBy));
+          if (creatorDoc.exists()) {
+            creatorProfilePic = creatorDoc.data().profilePic || null;
+            creatorName = creatorDoc.data().username || creatorName;
+          }
+        }
+
           const createdAt = pollData.createdAt?.toDate() || new Date();
           const durationMs = 
             pollData.duration?.unit === "days" ? parseInt(pollData.duration.value) * 24 * 60 * 60 * 1000 :
@@ -109,10 +125,12 @@ export default function PollDetail() {
             pollData.duration?.unit === "minutes" ? parseInt(pollData.duration.value) * 60 * 1000 : 0;
           const expiresAt = createdAt.getTime() + durationMs;
           const isExpired = expiresAt <= Date.now();
-
+          
           setPoll({ 
             id: pollDoc.id, 
             ...pollData,
+            creatorProfilePic, // Make sure this is included
+          creatorName,  
             createdAt,
             isExpired
           });
@@ -152,18 +170,18 @@ export default function PollDetail() {
     return () => unsubscribe();
   }, [id]);
 
-  const submitComment = async () => {
-    if (!newComment.trim() || !user || !id) return;
+const submitComment = async () => {
+  if (!newComment.trim() || !user || !id || isSubmitting) return;
 
-    if (newComment.length > 500) {
+  if (newComment.length > 500) {
     Alert.alert("Error", "Comments cannot exceed 500 characters.");
     return;
   }
 
-    const commentsRef = collection(db, 'polls', id, 'comments');
+  setIsSubmitting(true);
 
-    try {
-      const commentsRef = collection(db, "polls", pollId, "comments");
+  try {
+    const commentsRef = collection(db, "polls", id, "comments");
     const q = query(commentsRef);
     const querySnapshot = await getDocs(q);
     
@@ -172,35 +190,37 @@ export default function PollDetail() {
       return;
     }
 
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      const username = userDoc.exists() ? userDoc.data().username : user.email;
-      const profilePic = userDoc.exists() ? userDoc.data().profilePic : null;
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    const username = userDoc.exists() ? userDoc.data().username : user.email;
+    const profilePic = userDoc.exists() ? userDoc.data().profilePic : null;
 
-      const commentData = {
-        userId: user.uid,
-        username,
+    const commentData = {
+      userId: user.uid,
+      username,
+      text: newComment.trim(),
+      timestamp: serverTimestamp(),
+      profilePic: profilePic || '',
+    };
+
+    if (editingCommentId) {
+      const commentDocRef = doc(commentsRef, editingCommentId);
+      await updateDoc(commentDocRef, {
         text: newComment.trim(),
         timestamp: serverTimestamp(),
-        profilePic: profilePic || '',
-      };
-
-      if (editingCommentId) {
-        const commentDocRef = doc(commentsRef, editingCommentId);
-        await updateDoc(commentDocRef, {
-          text: newComment.trim(),
-          timestamp: serverTimestamp(),
-        });
-        setEditingCommentId(null);
-      } else {
-        await addDoc(commentsRef, commentData);
-      }
-
-      setNewComment('');
-    } catch (error) {
-      console.error('Failed to submit comment:', error);
-      Alert.alert('Error', 'Could not post comment.');
+      });
+      setEditingCommentId(null);
+    } else {
+      await addDoc(commentsRef, commentData);
     }
-  };
+
+    setNewComment('');
+  } catch (error) {
+    console.error('Failed to submit comment:', error);
+    Alert.alert('Error', 'Could not post comment.');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const editComment = (comment) => {
     setNewComment(comment.text);
@@ -526,15 +546,20 @@ export default function PollDetail() {
     </View>
   ) : (
     <TouchableOpacity
-      onPress={submitComment}
-      disabled={!newComment.trim() || newComment.length > 500}
-      style={[
-        styles.commentSubmitButton,
-        (!newComment.trim() || newComment.length > 500) && styles.commentSubmitButtonDisabled,
-      ]}
-    >
-      <Text style={styles.commentSubmitText}>Post</Text>
-    </TouchableOpacity>
+  onPress={submitComment}
+  disabled={!newComment.trim() || newComment.length > 500 || isSubmitting}
+  style={[
+    styles.commentSubmitButton,
+    (!newComment.trim() || newComment.length > 500 || isSubmitting) && 
+      styles.commentSubmitButtonDisabled,
+  ]}
+>
+  {isSubmitting ? (
+    <ActivityIndicator size="small" color="white" />
+  ) : (
+    <Text style={styles.commentSubmitText}>Post</Text>
+  )}
+</TouchableOpacity>
   )}
 </View>
     </View>
